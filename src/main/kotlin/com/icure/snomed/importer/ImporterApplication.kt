@@ -1,24 +1,15 @@
 package com.icure.snomed.importer
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.core.json.JsonReadFeature
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
-import io.icure.kraken.client.models.ListOfIdsDto
-import kotlinx.collections.immutable.PersistentList
-import kotlinx.collections.immutable.persistentHashMapOf
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 import kotlin.io.path.Path
-import kotlin.io.path.reader
+import kotlin.io.path.forEachLine
+
 
 operator fun List<String>.component3() = this[2]
 operator fun List<String>.component4() = this[3]
@@ -27,129 +18,128 @@ operator fun List<String>.component6() = this[5]
 operator fun List<String>.component7() = this[6]
 operator fun List<String>.component8() = this[7]
 operator fun List<String>.component9() = this[8]
+operator fun List<String>.component10() = this[9]
+
+data class SnomedCTCode(
+    val code: String,
+    val version: String,
+    var description: String? = null,
+    var language: String? = null,
+    val synonyms: MutableList<String> = mutableListOf(),
+    val relations: MutableMap<String, List<String>> = mutableMapOf(),
+    val keywords: MutableSet<String> = mutableSetOf()
+) {
+    fun toCodeDTO(): CodeDto {
+        return CodeDto(
+            id = "SNOMED|$code|$version",
+            type = "SNOMED",
+            code = code,
+            version = version,
+            label = mapOf(language!! to description!!),
+            qualifiedLinks = relations,
+            searchTerms = mapOf(language!! to keywords)
+        )
+    }
+}
 
 @SpringBootApplication
 @ExperimentalCoroutinesApi
 @ExperimentalStdlibApi
 class ImporterApplication : CommandLineRunner {
-    private val objectMapper: ObjectMapper = ObjectMapper()
-        .registerModule(KotlinModule())
-        .registerModule(JavaTimeModule()).apply {
-            setSerializationInclusion(JsonInclude.Include.NON_NULL)
+    // Given the files of a FULL SNOMED CT release, it finds all the versions it contains
+    fun getVersions(conceptFile: String, descriptionFile: String, relationshipFile: String): Set<String> {
+        val versionSet = HashSet<String>()
+        Path(conceptFile).forEachLine(Charsets.UTF_8) {
+            val (_, version, _, _, _) = it.split("\t")
+            versionSet.add(version)
+        }
+        Path(descriptionFile).forEachLine(Charsets.UTF_8) {
+            val (_, version, _, _, _, _, _, _, _) = it.split("\t")
+            versionSet.add(version)
+        }
+        Path(relationshipFile).forEachLine(Charsets.UTF_8) {
+            val (_, version, _, _, _, _, _, _, _, _) = it.split("\t")
+            versionSet.add(version)
+        }
+        return versionSet
+    }
+
+    // Adds the codes from a delta release
+    fun parseDelta(
+        version: String,
+        conceptFile: String,
+        descriptionFile: String,
+        relationshipFile: String
+    ): Collection<SnomedCTCode> {
+        val codes = mutableMapOf<String, SnomedCTCode>() // Data structure that contains all the codes for that release
+        val parser = CoreNLPParser(setOf("FW", "JJ", "NN", "NNS", "NNP", "NNPS"))    // Parser to elaborate search terms
+
+        // First, I parse all the concepts
+        Path(conceptFile).forEachLine(Charsets.UTF_8) {
+            val (conceptId, conceptVersion, active, _, _) = it.split("\t")
+            if (conceptVersion == version && active == "1") {
+                codes[conceptId] = SnomedCTCode(conceptId, conceptVersion)
+            }
         }
 
+        // Second, I parse all the descriptions, and I assign them to the concepts
+        Path(descriptionFile).forEachLine(Charsets.UTF_8) {
+            val (conceptId, descriptionVersion, active, _, _, language, typeId, term, _) = it.split("\t")
+            if (descriptionVersion == version && active == "1") {
+                codes[conceptId]!!.language = language                                      // If I find a description
+                if (typeId == "900000000000003001") codes[conceptId]!!.description = term   // without code, it's a
+            } else codes[conceptId]!!.synonyms.add(term)                                // problem
+        }
+
+        // Third, I parse the relations, and I assign them to the concepts
+        Path(relationshipFile).forEachLine(Charsets.UTF_8) {
+            val (_, relationVersion, active, _, sourceId, destinationId, _, typeId, _, _) = it.split("\t")
+            if (relationVersion == version && active == "1") {
+                codes[sourceId]!!.relations[typeId] =                           // If I find a relation without a code
+                    codes[sourceId]!!.relations[typeId]?.plus(destinationId)    // it's also a problem
+                        ?: listOf(destinationId)
+            }
+        }
+
+        // Generates a set of keyword for each concept based on its fully qualified name, description, and fully
+        // qualified name of the related concepts
+        codes.forEach { (_, v) ->
+            v.description?.let {
+                v.keywords.addAll(parser.getTokensByPOSTags(it))
+            }
+            v.synonyms.forEach {
+                v.keywords.addAll(parser.getTokensByPOSTags(it))
+            }
+            v.relations.forEach { (_, ids) ->
+                ids.forEach { id ->
+                    codes[id]?.description?.let {
+                        v.keywords.addAll(parser.getTokensByPOSTags(it))
+                    }
+                }
+            }
+        }
+        return codes.values
+    }
+
     override fun run(args: Array<String>) {
-        val snomedMappings: Map<String, List<String>> = Path(args[0]).reader(Charsets.UTF_8).readLines()
-            .fold(persistentHashMapOf<String, PersistentList<String>>()) { map, it ->
-                val (_, _, active, _, _, referencedComponentId, mapTarget) = it.split("\t")
-                if (active == "1") {
-                    map.put(referencedComponentId, (map[referencedComponentId] ?: persistentListOf()).add(mapTarget))
-                } else map
-            }
-        val acceptabilityMapping =
-            Path(args[1]).reader(Charsets.UTF_8).readLines().fold(persistentHashMapOf<String, Int>()) { map, it ->
-                val (_, _, active, _, _, referencedComponentId, acceptabilityId) = it.split("\t")
-                if (active == "1") {
-                    map.put(
-                        referencedComponentId, when (acceptabilityId) {
-                            "900000000000549004" -> 1
-                            "900000000000548007" -> 2
-                            else -> 0
-                        }
-                    )
-                } else map
-            }
-        val terms = Path(args[2]).reader(Charsets.UTF_8).readLines()
-            .fold(persistentHashMapOf<String, Map<String, List<String>>>()) { map, it ->
-                val (id, _, active, _, conceptId, languageCode, _, term, _) = it.split("\t")
-                if (active == "1" && (acceptabilityMapping[id] ?: 0) >= 1) {
-                    map.put(conceptId, (map[conceptId] ?: mapOf()).let { lngMap ->
-                        lngMap + (languageCode to ((lngMap[languageCode] ?: emptyList()) + term))
-                    })
-                } else map
-            }
         val userName = args[3]
         val password = args[4]
 
         runBlocking {
             val codeApi =
                 CodeApi(basePath = "http://127.0.0.1:16043", authHeader = basicAuth(userName, password))
-            val startKey = null
-            val startDocumentId = null
-            addSnomedToIbui(codeApi, startKey, startDocumentId, snomedMappings, terms)
+
+            getVersions(args[0], args[1], args[2]).forEach { ver ->
+                parseDelta(ver, args[0], args[1], args[2]).forEach { code ->
+                    codeApi.createCode(code.toCodeDTO())
+                }
+            }
         }
     }
 
-    private suspend fun addSnomedToIbui(
-        codeApi: CodeApi,
-        startKey: String?,
-        startDocumentId: String?,
-        snomedMappings: Map<String, List<String>>,
-        terms: Map<String, Map<String, List<String>>>
-    ) {
-        val ibuis = codeApi.findCodesByType("be", "BE-THESAURUS", null, null, startKey, startDocumentId, 1000)
-
-        val toBeUpdated = ibuis.rows.mapNotNull { code ->
-            val toBeAdded = snomedMappings[code.code] ?: emptyList()
-            val snomeds = code.qualifiedLinks.entries.filter { (key, value) -> isSnomed(key, value) }
-            val missing = toBeAdded.filter { s -> !snomeds.any { (_, v) -> v.contains("|$s|") } }
-            if (missing.isNotEmpty()) {
-                code.copy(
-                    qualifiedLinks = code.qualifiedLinks + ("narrower" to (
-                            (code.qualifiedLinks["narrower"]) ?: emptyList()) + missing.map { "SNOMED|$it|20220315" })
-                )
-            } else null
-        }
-
-        val snomed = toBeUpdated.flatMap { it.qualifiedLinks.entries.filter { (key, value) -> isSnomed(key, value) }.flatMap { s -> s.value } }.toSortedSet()
-        val existingSnomeds = snomed.toList().takeIf { it.isNotEmpty() }?.let { ids -> codeApi.getCodes(ListOfIdsDto(ids)).map { it.id to it }.toMap() } ?: emptyMap()
-
-        snomed.filter { !existingSnomeds.containsKey(it) }.forEach {
-            val codeDto = makeCode(it, terms)
-            codeApi.createCode(codeDto)
-        }
-
-        snomed.filter { existingSnomeds.containsKey(it) }.forEach {
-            val existing = existingSnomeds[it]!!
-            val codeDto = makeCode(it, terms)
-            codeApi.modifyCode(codeDto.copy(rev = existing.rev))
-        }
-
-        toBeUpdated.forEach {
-            codeApi.modifyCode(it)
-        }
-
-        ibuis.nextKeyPair?.let {
-            addSnomedToIbui(codeApi, objectMapper.writeValueAsString(it.startKey), it.startKeyDocId, snomedMappings, terms)
-        }
+    @ExperimentalCoroutinesApi
+    @ExperimentalStdlibApi
+    fun main(args: Array<String>) {
+        runApplication<ImporterApplication>(*args)
     }
-
-    private fun makeCode(
-        id: String,
-        terms: Map<String, Map<String, List<String>>>
-    ): CodeDto {
-        val (type, code, version) = id.split("|")
-        val label = terms[code] ?: emptyMap()
-        val codeDto = CodeDto(
-            id = id,
-            type = type,
-            code = code,
-            version = version,
-            label = label.entries.associate { (k, v) -> k to v.first() },
-            searchTerms = label.entries.associate { (k, v) -> k to v.toSet() })
-        return codeDto
-    }
-
-    private fun isSnomed(key: String, value: List<String>) = listOf(
-        "exact",
-        "narrower",
-        "broader",
-        "approximate"
-    ).contains(key) && value.any { it.startsWith("SNOMED|") }
-}
-
-@ExperimentalCoroutinesApi
-@ExperimentalStdlibApi
-fun main(args: Array<String>) {
-    runApplication<ImporterApplication>(*args)
 }

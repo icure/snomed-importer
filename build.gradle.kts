@@ -52,7 +52,11 @@ dependencies {
 
     implementation(group = "org.jetbrains.kotlinx", name = "kotlinx-collections-immutable-jvm", version = "0.3.5")
 
+    implementation("edu.stanford.nlp:stanford-corenlp:4.4.0")
+    implementation("edu.stanford.nlp:stanford-corenlp:4.4.0:models")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+
 }
 
 tasks.withType<KotlinCompile> {
