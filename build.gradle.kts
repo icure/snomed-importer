@@ -31,6 +31,8 @@ dependencies {
     implementation(group = "com.fasterxml.jackson.module", name = "jackson-module-kotlin", version = jacksonVersion)
     implementation(group = "com.fasterxml.jackson.datatype", name = "jackson-datatype-jsr310", version = jacksonVersion)
 
+    implementation(group = "io.projectreactor.netty", name = "reactor-netty", version = "1.0.18")
+
     implementation(group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version = kotlinCoroutinesVersion)
     implementation(
         group = "org.jetbrains.kotlinx",
@@ -47,15 +49,18 @@ dependencies {
     implementation(
         group = "io.icure",
         name = "icure-reactive-kotlin-client",
-        version = "0.1.335-884232c19a"
+        version = "0.1.420-bedcb22f02"
     )
 
     implementation(group = "org.jetbrains.kotlinx", name = "kotlinx-collections-immutable-jvm", version = "0.3.5")
 
     implementation("edu.stanford.nlp:stanford-corenlp:4.4.0")
     implementation("edu.stanford.nlp:stanford-corenlp:4.4.0:models")
+    implementation("edu.stanford.nlp:stanford-corenlp:4.4.0:models-french")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation(group = "io.kotest", name = "kotest-assertions-core", version = "4.6.4")
+    testImplementation(group = "io.kotest", name = "kotest-runner-junit5", version = "4.6.4")
 
 }
 
