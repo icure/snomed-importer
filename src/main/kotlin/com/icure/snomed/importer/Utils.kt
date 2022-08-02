@@ -3,6 +3,7 @@ package com.icure.snomed.importer
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.ListOfIdsDto
+import io.icure.kraken.client.models.filter.chain.FilterChain
 import io.icure.kraken.client.models.filter.code.CodeIdsByTypeCodeVersionIntervalFilter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File
@@ -136,96 +137,60 @@ fun retrieveCodesAndUpdates(
     return codes
 }
 
-class CommandlineProgressBar(
-    private val message: String,
-    private val maxCount: Int? = null
-) {
-    private var count: Int = 0
-    private var skipped: Int = 0
-    private val deltas: Array<Long> = if (maxCount != null && maxCount > 50000) Array((maxCount*0.0002).toInt()) {0} else Array(10) {0}
-    private var i: Int = 0
-    private var lastCheck: Long? = null
-    private var hr: Long = 0
-    private var min: Long = 0
-    private var sec: Long = 0
-
-    fun print() {
-        val avgMillis = deltas.sum() / 10
-        maxCount?.let {
-            if (i == 0) {
-                val total = avgMillis * (it - count)
-                hr = TimeUnit.MILLISECONDS.toHours(total)
-                min = TimeUnit.MILLISECONDS.toMinutes(total) - TimeUnit.HOURS.toMinutes(hr)
-                sec =
-                    TimeUnit.MILLISECONDS.toSeconds(total) - TimeUnit.MINUTES.toSeconds(min) - TimeUnit.HOURS.toSeconds(hr)
-            }
-            val progress = 20 * count / it
-            print("$message ($avgMillis ms/it) [${"=".repeat(progress)}${".".repeat(20-progress)}] $count/${it} - ETA: $hr:$min:$sec - $skipped skipped\r")
-        } ?: print("$message ($avgMillis ms/it) - Processed: $count - $skipped skipped\r")
-    }
-
-    fun step() {
-        val end = System.currentTimeMillis()
-        lastCheck?.let {
-            deltas[i] = end - it
-            i = (i+1)%10
-        }
-        lastCheck = end
-        count++
-    }
-
-    fun addSkip() {
-        skipped++
-    }
-}
-
 @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
 suspend fun batchDBUpdate(codes: Map<String, SnomedCTCodeUpdate>, codeType: String, chunkSize: Int, codeApi: CodeApi, progressBar: CommandlineProgressBar) =
-    codes.keys.chunked(chunkSize).forEach { chunkCodesId ->
+    codes.keys.chunked(chunkSize).fold(listOf<String>()) { generatedIds, chunkCodesId ->
+
+        progressBar.print()
         // First, I look for the existing codes in the database. If multiple CodeDTOs exist for the same code,
         // I only choose the one of the highest version
-        val existingCodesIds = codeApi.matchCodesBy(
-            CodeIdsByTypeCodeVersionIntervalFilter(
-                startType = codeType,
-                startCode = codes[chunkCodesId.first()]!!.code,
-                startVersion = codes[chunkCodesId.first()]!!.version,
-                endType = codeType,
-                endCode = codes[chunkCodesId.last()]!!.code,
-                endVersion = codes[chunkCodesId.last()]!!.version
+        val existingCodes = codeApi.filterCodesBy(
+            startKey = null,
+            startDocumentId = null,
+            limit = null,
+            skip = null,
+            sort = null,
+            desc = null,
+            filterChainCode = FilterChain(
+                    CodeIdsByTypeCodeVersionIntervalFilter(
+                    startType = codeType,
+                    startCode = codes[chunkCodesId.first()]!!.code,
+                    startVersion = codes[chunkCodesId.first()]!!.version,
+                    endType = codeType,
+                    endCode = codes[chunkCodesId.last()]!!.code,
+                    endVersion = codes[chunkCodesId.last()]!!.version
+                )
             )
-        ).groupBy {
-            val (type, code, _) = it.split('|')
-            Pair(type, code)
-        }.map { codes -> codes.value.maxWithOrNull(compareBy{ it.lowercase() })!! }
-
-        // I retrieve the codes related to the existing ids
-        val existingCodes = codeApi.getCodes(ListOfIdsDto(existingCodesIds)).associateBy { it.code }
+        ).rows.groupBy {
+            Pair(it.type!!, it.code!!)
+        }.mapNotNull { groupedCodes ->
+            //First, I check that the code is among the ones to be modified
+            codes[groupedCodes.key.second]?.let { code ->
+                // If the update has a version and matches with an existing one, then I want to update that code
+                groupedCodes.value.firstOrNull { it.version == code.version }
+                    ?:
+                    if (code.version == null) groupedCodes.value.maxByOrNull { it.version!!.lowercase() } // If the update has no version, I want to update the latest code
+                    else null // Else I want to create a new code from the update
+            }
+        }.associateBy { it.code }
 
         // For each code in the chunk
         val newCodes = chunkCodesId.fold(CodeBatches(listOf(), listOf())) { acc, it ->
-            // If the new code is already in the database
+            // If the code exists, I have to update it
             existingCodes[it]?.let { existingCode ->
-                // If the code does not have a version or has the same version of the existing one
-                // Then I update the existing one
-                if (codes[it]!!.version == null || existingCode.version == codes[it]!!.version) CodeBatches(acc.createBatch, acc.updateBatch + makeCodeFromUpdate(codes[it]!!, codeType, existingCode))
-                // Otherwise, I create a new code
-                else CodeBatches(acc.createBatch + makeCodeFromUpdate(codes[it]!!, codeType), acc.updateBatch)
-            } ?: codes[it]?.version?.let{ codeUpdate ->
+                CodeBatches(acc.createBatch, acc.updateBatch + makeCodeFromUpdate(codes[it]!!, codeType, existingCode))
+            } ?: codes[it]?.version?.let{ _ -> // Otherwise, I create a new code
                 // If the code does not exist and has a version, I create a new code
-                CodeBatches(acc.createBatch + makeCodeFromUpdate(codes[codeUpdate]!!, codeType), acc.updateBatch)
+                CodeBatches(acc.createBatch + makeCodeFromUpdate(codes[it]!!, codeType), acc.updateBatch)
                 // If the code does not exist and does not have a version, we have a problem
             } ?: acc.also { progressBar.addSkip() }
         }
 
-        codeApi.createCodes(newCodes.createBatch).forEach { _ ->
-            progressBar.print()
-            progressBar.step()
-        }
+        val createdIds = codeApi.createCodes(newCodes.createBatch).map { it.id }
 
-        codeApi.modifyCodes(newCodes.updateBatch).forEach { _ ->
-            progressBar.print()
-            progressBar.step()
-        }
-
+        val updatedIds = codeApi.modifyCodes(newCodes.updateBatch).map { it.id }
+        progressBar.step(chunkSize)
+        progressBar.print()
+        generatedIds + updatedIds + createdIds
     }
 

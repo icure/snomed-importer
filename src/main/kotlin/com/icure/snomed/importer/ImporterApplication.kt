@@ -85,15 +85,14 @@ class ImporterApplication : CommandLineRunner {
 
         runBlocking {
 
-            val codeApi =
-                CodeApi(basePath = "http://127.0.0.1:16043", authHeader = basicAuth(userName, password))
+            val codeApi = CodeApi(basePath = "https://kraken.icure.dev", authHeader = basicAuth(userName, password))
 
             batchDBUpdate(
                 codes,
                 "SNOMED",
                 10000,
                 codeApi,
-                CommandlineProgressBar("Updating codes...", codes.size)
+                CommandlineProgressBar("Updating codes...", codes.size, 5)
             )
             println("")
         }

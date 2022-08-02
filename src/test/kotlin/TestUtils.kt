@@ -51,7 +51,7 @@ class TestFileGenerator {
                         randRel = relationshipTypes[nextInt(0, 3)]
                         sourceId = nextInt(1, rows).toString()
                         destinationId = nextInt(1, rows).toString()
-                    } while (setOf(randRel, sourceId, destinationId) in acc.generated)
+                    } while (acc.generated.contains(setOf(randRel, sourceId, destinationId)))
 
                     RelationshipAccumulator(
                         acc.generated + setOf(setOf(randRel, sourceId, destinationId)),
