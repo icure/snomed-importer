@@ -64,6 +64,8 @@ class ImporterApplication : CommandLineRunner {
     override fun run(args: Array<String>) {
         val userName = args[1]
         val password = args[2]
+        val iCureUrl = args[3]
+        val codeType = args[4]
 
         val resolver = PathMatchingResourcePatternResolver(javaClass.classLoader)
 
@@ -85,12 +87,12 @@ class ImporterApplication : CommandLineRunner {
 
         runBlocking {
 
-            val codeApi = CodeApi(basePath = "https://kraken.icure.dev", authHeader = basicAuth(userName, password))
+            val codeApi = CodeApi(basePath = iCureUrl, authHeader = basicAuth(userName, password))
 
             batchDBUpdate(
                 codes,
-                "SNOMED",
-                10000,
+                codeType,
+                1000,
                 codeApi,
                 CommandlineProgressBar("Updating codes...", codes.size, 5)
             )

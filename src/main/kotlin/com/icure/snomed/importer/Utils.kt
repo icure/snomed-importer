@@ -42,7 +42,7 @@ fun makeCodeFromUpdate(update: SnomedCTCodeUpdate, type: String, oldCode: CodeDt
             label = oldCode.label?.plus(update.description) ?: update.description,
             regions = (oldCode.regions.toSet() + setOf(update.region)).toList(),
             qualifiedLinks = newLinks.filter { (_, v) -> v.isNotEmpty() },
-            searchTerms = update.searchTerms.ifEmpty { oldCode.searchTerms },
+            searchTerms = oldCode.searchTerms + update.searchTerms,
             disabled = update.disabled ?: oldCode.disabled
         ) ?: CodeDto(
         id = "$type|${update.code}|${update.version}",
@@ -193,4 +193,3 @@ suspend fun batchDBUpdate(codes: Map<String, SnomedCTCodeUpdate>, codeType: Stri
         progressBar.print()
         generatedIds + updatedIds + createdIds
     }
-

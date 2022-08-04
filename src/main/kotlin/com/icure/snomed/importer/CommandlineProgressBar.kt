@@ -1,5 +1,6 @@
 package com.icure.snomed.importer
 
+import java.lang.Integer.max
 import java.util.concurrent.TimeUnit
 
 class CommandlineProgressBar(
@@ -27,18 +28,22 @@ class CommandlineProgressBar(
                     TimeUnit.MILLISECONDS.toSeconds(total) - TimeUnit.MINUTES.toSeconds(min) - TimeUnit.HOURS.toSeconds(hr)
             }
             val progress = 20 * count / it
-            print("$message ($avgMillis ms/it) [${"=".repeat(progress)}${".".repeat(20-progress)}] $count/${it} - ETA: $hr:$min:$sec - $skipped skipped\r")
+            print("$message ($avgMillis ms/it) [${"=".repeat(progress)}${".".repeat(max(20-progress, 0))}] $count/${it} - ETA: $hr:$min:$sec - $skipped skipped\r")
         } ?: print("$message ($avgMillis ms/it) - Processed: $count - $skipped skipped\r")
     }
 
     fun step(numSteps: Int = 1) {
+        val steps = maxCount?.let{
+            if(count + numSteps > it) numSteps
+            else it - count
+        } ?: numSteps
         val end = System.currentTimeMillis()
         lastCheck?.let {
-            deltas[i] = (end - it)/numSteps
+            deltas[i] = (end - it)/steps
             i = (i+1)%averageTimeWindowSize
         }
         lastCheck = end
-        count += numSteps
+        count += steps
     }
 
     fun addSkip() {
