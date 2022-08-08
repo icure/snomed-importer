@@ -10,9 +10,23 @@ plugins {
     kotlin("plugin.spring") version "1.6.21"
 }
 
+buildscript {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+        maven { url = uri("https://maven.taktik.be/content/groups/public") }
+        maven { url = uri("https://repo.spring.io/plugins-release") }
+    }
+    dependencies {
+        classpath("com.taktik.gradle:gradle-plugin-docker-java:2.1.0")
+    }
+}
+
 group = "com.icure.snomed"
 version = "0.0.1-SNAPSHOT"
 java.sourceCompatibility = JavaVersion.VERSION_11
+
+apply(plugin = "docker-java")
 
 repositories {
     mavenCentral()
