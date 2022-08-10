@@ -1,0 +1,163 @@
+package com.icure.snomed.importer
+
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.fasterxml.jackson.module.kotlin.SingletonSupport
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.retry
+import kotlinx.coroutines.runBlocking
+import java.io.File
+import java.math.BigInteger
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.charset.StandardCharsets
+import java.nio.file.Paths
+import java.security.DigestInputStream
+import java.security.MessageDigest
+import java.util.*
+import kotlin.collections.ArrayList
+
+data class ReleaseFile (
+    val releaseFileId: Int,
+    val label: String,
+    val createdAt: String,
+    val clientDownloadUrl: String
+)
+
+data class ReleaseVersion (
+    val releaseVersionId: Int,
+    val createdAt: String,
+    val name: String,
+    val description: String,
+    val online: Boolean,
+    val publishedAt: String,
+    val releaseFiles: List<ReleaseFile>
+) {
+    fun getPackageMD5(): String? {
+        return "RF2 package:[^a-f0-9]+([a-f0-9]{32})".toRegex().find(description)?.destructured?.toList()?.firstOrNull()
+    }
+
+    fun getRF2(): ReleaseFile? {
+        return releaseFiles.firstOrNull {
+            "SnomedCT.*zip".toRegex().matches(it.label)
+        }
+    }
+}
+
+data class Member (
+    val memberId: Int,
+    val key: String,
+    val createdAt: String,
+    val licenseName: String,
+    val licenseVersion: String,
+    val name: String?,
+    val staffNotificationEmail: String,
+    val promotePackages: Boolean
+)
+
+data class Release (
+    val releasePackageId: String,
+    val createdAt: String,
+    val member: Member,
+    val name: String,
+    val description: String,
+    val priority: Int,
+    val releaseVersions: List<ReleaseVersion>
+) {
+    fun getLatestRelease(): ReleaseVersion? {
+        return releaseVersions
+            .maxByOrNull { it.publishedAt }
+    }
+}
+
+fun HttpRequest.Builder.postMultipartFormData(boundary: String, data: Map<String, Any>): HttpRequest.Builder {
+    val byteArrays = ArrayList<ByteArray>()
+    val separator = "--$boundary\r\nContent-Disposition: form-data; name=".toByteArray(StandardCharsets.UTF_8)
+
+    for (entry in data.entries) {
+        byteArrays.add(separator)
+        byteArrays.add("\"${entry.key}\"\r\n\r\n${entry.value}\r\n".toByteArray(StandardCharsets.UTF_8))
+    }
+    byteArrays.add("--$boundary--".toByteArray(StandardCharsets.UTF_8))
+
+    this.header("Content-Type", "multipart/form-data;boundary=$boundary")
+        .POST(HttpRequest.BodyPublishers.ofByteArrays(byteArrays))
+    return this
+}
+
+class ReleaseDownloader(
+    private val baseFolder: String
+) {
+    private val client = HttpClient.newHttpClient()
+
+    companion object {
+        private val objectMapper: ObjectMapper? = ObjectMapper().registerModule(
+            KotlinModule.Builder()
+                .nullIsSameAsDefault(nullIsSameAsDefault = false)
+                .reflectionCacheSize(reflectionCacheSize = 512)
+                .nullToEmptyMap(nullToEmptyMap = false)
+                .nullToEmptyCollection(nullToEmptyCollection = false)
+                .singletonSupport(singletonSupport = SingletonSupport.DISABLED)
+                .strictNullChecks(strictNullChecks = false)
+                .build()
+        )
+    }
+
+    fun getSnomedInternationalReleases(): Release? {
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create("https://mlds.ihtsdotools.org/api/releasePackages/167"))
+            .GET()
+            .build()
+
+        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        return objectMapper?.readValue(response.body(), object : TypeReference<Release>() {})
+    }
+
+    private fun getSessionCookie(username: String, password: String): String? {
+        val formBody = mapOf("j_username" to username, "j_password" to password)
+        val request = HttpRequest.newBuilder()
+            .uri(URI.create("https://mlds.ihtsdotools.org/app/authentication"))
+            .postMultipartFormData(BigInteger(35, Random()).toString(), formBody)
+            .build()
+
+        val response = client.send(request, HttpResponse.BodyHandlers.discarding())
+        return response.headers().map()["set-cookie"]?.let {
+            it[0].split(';')[0]
+        }
+    }
+
+    fun downloadRelease(username: String, password: String, release: ReleaseFile) {
+        val sessionCookie = getSessionCookie(username, password)
+        sessionCookie?.let { cookie ->
+            val request = HttpRequest.newBuilder()
+                .uri(URI.create("https://mlds.ihtsdotools.org${release.clientDownloadUrl}"))
+                .header("Cookie", cookie)
+                .GET()
+                .build()
+
+            client.send(request, HttpResponse.BodyHandlers.ofFile(Paths.get("$baseFolder/${release.label}")))
+        }
+    }
+
+    fun checkMD5(release: ReleaseVersion): Boolean {
+        return release.getRF2()?.let { releaseFile ->
+            val md = MessageDigest.getInstance("MD5");
+            File("$baseFolder/${releaseFile.label}").inputStream().use {
+                val b = ByteArray(1024)
+                var c = it.read(b)
+                do {
+                    md.update(b, 0, c)
+                    c = it.read(b)
+                } while(c != -1)
+            }
+            val calculatedMD5 = BigInteger(1, md.digest()).toString(16).padStart(32, '0')
+            release.getPackageMD5() == calculatedMD5
+        } ?: false
+    }
+}
+

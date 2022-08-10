@@ -4,8 +4,6 @@ import TestFileGenerator
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.ListOfIdsDto
-import io.icure.kraken.client.models.filter.chain.FilterChain
-import io.icure.kraken.client.models.filter.code.AllCodesFilter
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
