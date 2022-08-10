@@ -19,6 +19,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import java.io.File
 import java.nio.file.Files
 import java.time.Instant
+import java.util.IllegalFormatCodePointException
 import kotlin.io.path.Path
 import kotlin.io.path.forEachLine
 
@@ -62,21 +63,32 @@ class ImporterApplication : CommandLineRunner {
     }
 
     override fun run(args: Array<String>) {
-        val userName = args[1]
-        val password = args[2]
-        val iCureUrl = args[3]
-        val codeType = args[4]
+        val basePath = System.getenv("BASE_PATH")!!
+        val userName = System.getenv("ICURE_USER")!!
+        val password = System.getenv("ICURE_PWD")!!
+        val iCureUrl = System.getenv("ICURE_URL")!!
+        val codeType = System.getenv("CODE_TYPE")!!
+        val snomedUserName = System.getenv("SNOMED_USER")!!
+        val snomedPassword = System.getenv("SNOMED_PWD")!!
 
-        val resolver = PathMatchingResourcePatternResolver(javaClass.classLoader)
+        val downloader = ReleaseDownloader(basePath)
+        val release = downloader.getSnomedReleases(167) ?: throw IllegalStateException("No release list found")
+        val latestRelease = release.getLatestRelease() ?: throw IllegalStateException("Cannot get latest release")
+        val latestRF2 = latestRelease.getRF2() ?: throw IllegalStateException("Cannot get latest RF2")
+        downloader.downloadRelease(snomedUserName, snomedPassword, latestRF2)
+        if (!downloader.checkMD5(latestRelease)) throw IllegalStateException("Downloaded release MD5 does not match")
+        val folders = downloader.getReleaseTypes(latestRF2)
 
-        val conceptFile = resolver.getResources("classpath*:${args[0]}/sct2_Concept_**.txt")
-            .firstOrNull()?.file ?: throw IllegalStateException("Concept file not found in ${args[0]}")
-        val descriptionFiles = resolver.getResources("classpath*:${args[0]}/sct2_Description_**.txt")
-            .fold(setOf<File>()) { map, it ->
-                map + it.file
-            }
-        val relationshipFile = resolver.getResources("classpath*:${args[0]}/sct2_Relationship_**.txt")
-            .firstOrNull()?.file ?: throw IllegalStateException("Relationship file not found in ${args[0]}")
+        val folder = folders.delta ?: folders.snapshot ?: throw IllegalStateException("No valid release found")
+
+        val conceptFile = File(folder).walk().filter { "sct2_Concept_[0-9a-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull() ?:
+            throw IllegalStateException("Cannot find Concept File")
+
+        val descriptionFiles = File(folder).walk().filter { "sct2_Description_[0-9a-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.toSet()
+        if (descriptionFiles.isEmpty()) throw IllegalStateException("No description file found")
+
+        val relationshipFile = File(folder).walk().filter { "sct2_Relationship_[0-9a-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull() ?:
+        throw IllegalStateException("Cannot find Concept File")
 
         val region =
             Regex(pattern = ".*sct2_Concept_.+_([A-Z]{2,3}).*").find(conceptFile.name)?.groupValues?.get(1)

@@ -4,11 +4,6 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.SingletonSupport
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.retry
-import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.math.BigInteger
 import java.net.URI
@@ -17,10 +12,14 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
-import java.security.DigestInputStream
 import java.security.MessageDigest
 import java.util.*
 import kotlin.collections.ArrayList
+
+data class ReleaseFolders (
+    val delta: String?,
+    val snapshot: String?
+)
 
 data class ReleaseFile (
     val releaseFileId: Int,
@@ -108,9 +107,10 @@ class ReleaseDownloader(
         )
     }
 
-    fun getSnomedInternationalReleases(): Release? {
+    fun getSnomedReleases(releaseCode: Int): Release? {
+        // Release code is 167 for international and 190400 for Belgium
         val request = HttpRequest.newBuilder()
-            .uri(URI.create("https://mlds.ihtsdotools.org/api/releasePackages/167"))
+            .uri(URI.create("https://mlds.ihtsdotools.org/api/releasePackages/$releaseCode"))
             .GET()
             .build()
 
@@ -159,5 +159,19 @@ class ReleaseDownloader(
             release.getPackageMD5() == calculatedMD5
         } ?: false
     }
+
+    fun getReleaseTypes(release: ReleaseFile): ReleaseFolders {
+        val process = ProcessBuilder("unzip", release.label)
+        process.directory(File(baseFolder))
+        process.start().waitFor()
+        val deltaDir = if (File("$baseFolder/${release.label.split('.')[0]}/Delta").isDirectory)
+            "$baseFolder/${release.label.split('.')[0]}/Delta/Terminology"
+        else null
+        val snapshotDir = if (File("$baseFolder/${release.label.split('.')[0]}/Snapshot").isDirectory)
+            "$baseFolder/${release.label.split('.')[0]}/Snapshot/Terminology"
+        else null
+        return ReleaseFolders(deltaDir, snapshotDir)
+    }
+
 }
 
