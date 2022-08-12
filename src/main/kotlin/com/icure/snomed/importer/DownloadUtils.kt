@@ -55,7 +55,7 @@ data class Member (
     val licenseName: String,
     val licenseVersion: String,
     val name: String?,
-    val staffNotificationEmail: String,
+    val staffNotificationEmail: String?,
     val promotePackages: Boolean
 )
 
@@ -64,7 +64,7 @@ data class Release (
     val createdAt: String,
     val member: Member,
     val name: String,
-    val description: String,
+    val description: String?,
     val priority: Int,
     val releaseVersions: List<ReleaseVersion>
 ) {
@@ -108,7 +108,7 @@ class ReleaseDownloader(
     }
 
     fun getSnomedReleases(releaseCode: Int): Release? {
-        // Release code is 167 for international and 190400 for Belgium
+        // Release code is 167 for international and 190440 for Belgium
         val request = HttpRequest.newBuilder()
             .uri(URI.create("https://mlds.ihtsdotools.org/api/releasePackages/$releaseCode"))
             .GET()
@@ -146,7 +146,7 @@ class ReleaseDownloader(
 
     fun checkMD5(release: ReleaseVersion): Boolean {
         return release.getRF2()?.let { releaseFile ->
-            val md = MessageDigest.getInstance("MD5");
+            val md = MessageDigest.getInstance("MD5")
             File("$baseFolder/${releaseFile.label}").inputStream().use {
                 val b = ByteArray(1024)
                 var c = it.read(b)

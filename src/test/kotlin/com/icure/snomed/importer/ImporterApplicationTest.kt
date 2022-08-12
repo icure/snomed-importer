@@ -5,7 +5,9 @@ import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.ListOfIdsDto
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNot
 import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File
@@ -155,6 +157,69 @@ class ImporterApplicationTest : StringSpec({
         }
     }
 
+    "Check that update operation is idempotent" {
+        val databaseStatus = codeApi.findCodesByType(
+            region = null,
+            type = null,
+            code = null,
+            version = null,
+            startKey = null,
+            startDocumentId = null,
+            limit = 100000
+        ).rows.groupBy { it.code!! }
 
+        val conceptFile = File(conceptDeltaFilename)
+        val descriptionFiles = setOf(File(descriptionDeltaFilename))
+        val relationshipFile = File(relationshipDeltaFilename)
+
+        val codes = retrieveCodesAndUpdates("int", conceptFile, descriptionFiles, relationshipFile)
+
+        val firstUpdate = batchDBUpdate(
+            codes,
+            "SNOMED",
+            100,
+            codeApi,
+            CommandlineProgressBar("Updating codes...", codes.size)
+        ).let {
+            codeApi.getCodes(ListOfIdsDto(it))
+        }.associateBy { it.code!! }
+        println("")
+
+        val secondUpdate = batchDBUpdate(
+            codes,
+            "SNOMED",
+            100,
+            codeApi,
+            CommandlineProgressBar("Updating codes...", codes.size)
+        ).let {
+            codeApi.getCodes(ListOfIdsDto(it))
+        }.associateBy { it.code!! }
+        println("")
+
+        secondUpdate.size shouldBe firstUpdate.size
+
+        secondUpdate.forEach { (key, second) ->
+            firstUpdate[key] shouldNotBe null
+            val first = firstUpdate[key]!!
+            first.id shouldBe second.id
+            second.regions.forEach { region ->
+                first.regions shouldContain region
+            }
+            second.qualifiedLinks.forEach{ (type, links) ->
+                first.qualifiedLinks[type] shouldNotBe null
+                first.qualifiedLinks[type]!!.size shouldBe links.size
+                links.forEach { link -> first.qualifiedLinks[type]!! shouldContain link }
+            }
+            second.searchTerms.forEach { (lang, terms) ->
+                first.searchTerms[lang] shouldNotBe null
+                first.searchTerms[lang]!!.size shouldBe terms.size
+                terms.forEach { term -> first.searchTerms[lang]!! shouldContain term }
+            }
+            first.disabled shouldBe second.disabled
+            first.type shouldBe second.type
+            first.code shouldBe second.code
+            first.version shouldBe second.version
+        }
+    }
 
 })

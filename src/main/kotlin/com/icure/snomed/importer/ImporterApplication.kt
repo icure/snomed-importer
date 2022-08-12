@@ -72,7 +72,7 @@ class ImporterApplication : CommandLineRunner {
         val snomedPassword = System.getenv("SNOMED_PWD")!!
 
         val downloader = ReleaseDownloader(basePath)
-        val release = downloader.getSnomedReleases(167) ?: throw IllegalStateException("No release list found")
+        val release = downloader.getSnomedReleases(190440) ?: throw IllegalStateException("No release list found")
         val latestRelease = release.getLatestRelease() ?: throw IllegalStateException("Cannot get latest release")
         val latestRF2 = latestRelease.getRF2() ?: throw IllegalStateException("Cannot get latest RF2")
         downloader.downloadRelease(snomedUserName, snomedPassword, latestRF2)
