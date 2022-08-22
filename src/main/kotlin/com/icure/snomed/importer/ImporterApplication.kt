@@ -1,27 +1,12 @@
 package com.icure.snomed.importer
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.fasterxml.jackson.module.kotlin.SingletonSupport
 import io.icure.kraken.client.apis.CodeApi
-import io.icure.kraken.client.models.CodeDto
-import io.icure.kraken.client.models.ListOfIdsDto
-import kotlinx.collections.immutable.persistentHashSetOf
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import java.io.File
-import java.nio.file.Files
-import java.time.Instant
-import java.util.IllegalFormatCodePointException
-import kotlin.io.path.Path
-import kotlin.io.path.forEachLine
 
 operator fun List<String>.component3() = this[2]
 operator fun List<String>.component4() = this[3]
@@ -49,30 +34,21 @@ data class SnomedCTCodeUpdate(
 @ExperimentalStdlibApi
 class ImporterApplication : CommandLineRunner {
 
-    val objectMapper: ObjectMapper by lazy {
-        ObjectMapper().registerModule(
-            KotlinModule.Builder()
-                .nullIsSameAsDefault(nullIsSameAsDefault = false)
-                .reflectionCacheSize(reflectionCacheSize = 512)
-                .nullToEmptyMap(nullToEmptyMap = false)
-                .nullToEmptyCollection(nullToEmptyCollection = false)
-                .singletonSupport(singletonSupport = SingletonSupport.DISABLED)
-                .strictNullChecks(strictNullChecks = false)
-                .build()
-        )
-    }
-
     override fun run(args: Array<String>) {
         val basePath = System.getenv("BASE_PATH")!!
         val userName = System.getenv("ICURE_USER")!!
         val password = System.getenv("ICURE_PWD")!!
         val iCureUrl = System.getenv("ICURE_URL")!!
-        val codeType = System.getenv("CODE_TYPE")!!
+        val codeType = System.getenv("CODE_TYPE") ?: "SNOMED"
         val snomedUserName = System.getenv("SNOMED_USER")!!
         val snomedPassword = System.getenv("SNOMED_PWD")!!
+        val chunkSize = System.getenv("CHUNK_SIZE")!!.toInt()
+        val releaseCode = if (System.getenv("RELEASE_TYPE") == "INTERNATIONAL") 167
+            else if (System.getenv("RELEASE_TYPE") == "BELGIQUE") 190440
+            else 0
 
         val downloader = ReleaseDownloader(basePath)
-        val release = downloader.getSnomedReleases(190440) ?: throw IllegalStateException("No release list found")
+        val release = downloader.getSnomedReleases(releaseCode) ?: throw IllegalStateException("No release list found")
         val latestRelease = release.getLatestRelease() ?: throw IllegalStateException("Cannot get latest release")
         val latestRF2 = latestRelease.getRF2() ?: throw IllegalStateException("Cannot get latest RF2")
         downloader.downloadRelease(snomedUserName, snomedPassword, latestRF2)
@@ -81,13 +57,13 @@ class ImporterApplication : CommandLineRunner {
 
         val folder = folders.delta ?: folders.snapshot ?: throw IllegalStateException("No valid release found")
 
-        val conceptFile = File(folder).walk().filter { "sct2_Concept_[0-9a-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull() ?:
+        val conceptFile = File(folder).walk().filter { "sct2_Concept_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull() ?:
             throw IllegalStateException("Cannot find Concept File")
 
-        val descriptionFiles = File(folder).walk().filter { "sct2_Description_[0-9a-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.toSet()
+        val descriptionFiles = File(folder).walk().filter { "sct2_Description_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.toSet()
         if (descriptionFiles.isEmpty()) throw IllegalStateException("No description file found")
 
-        val relationshipFile = File(folder).walk().filter { "sct2_Relationship_[0-9a-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull() ?:
+        val relationshipFile = File(folder).walk().filter { "sct2_Relationship_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull() ?:
         throw IllegalStateException("Cannot find Concept File")
 
         val region =
@@ -104,7 +80,7 @@ class ImporterApplication : CommandLineRunner {
             batchDBUpdate(
                 codes,
                 codeType,
-                1000,
+                chunkSize,
                 codeApi,
                 CommandlineProgressBar("Updating codes...", codes.size, 5)
             )

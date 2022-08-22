@@ -38,7 +38,7 @@ data class ReleaseVersion (
     val releaseFiles: List<ReleaseFile>
 ) {
     fun getPackageMD5(): String? {
-        return "RF2 package:[^a-f0-9]+([a-f0-9]{32})".toRegex().find(description)?.destructured?.toList()?.firstOrNull()
+        return "RF2 package:[^a-f\\d]+([a-f\\d]{32})".toRegex().find(description)?.destructured?.toList()?.firstOrNull()
     }
 
     fun getRF2(): ReleaseFile? {

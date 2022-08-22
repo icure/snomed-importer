@@ -7,7 +7,6 @@ import io.icure.kraken.client.models.ListOfIdsDto
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNot
 import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File
@@ -158,16 +157,6 @@ class ImporterApplicationTest : StringSpec({
     }
 
     "Check that update operation is idempotent" {
-        val databaseStatus = codeApi.findCodesByType(
-            region = null,
-            type = null,
-            code = null,
-            version = null,
-            startKey = null,
-            startDocumentId = null,
-            limit = 100000
-        ).rows.groupBy { it.code!! }
-
         val conceptFile = File(conceptDeltaFilename)
         val descriptionFiles = setOf(File(descriptionDeltaFilename))
         val relationshipFile = File(relationshipDeltaFilename)

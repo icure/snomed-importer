@@ -96,28 +96,28 @@ class ReleaseFileParserTest : StringSpec({
         remainingCodes.isEmpty() shouldBe true
     }
 
-    "The International Snapshot release should not have active descriptions that correspond to a non existing code" {
-        val conceptFile = resolver.getResources("classpath*:/snomed/international/snapshot/sct2_Concept_**.txt").firstOrNull()?.file
-        val descriptionFiles = resolver.getResources("classpath*:/snomed/international/snapshot/sct2_Description_**.txt")
-            .fold(setOf<File>()) { map, it ->
-                map + it.file
-            }
-        conceptFile shouldNotBe null
-        descriptionFiles.isNotEmpty() shouldBe true
-        val codesSet = mutableSetOf<String>()
-        conceptFile!!.forEachLine {
-            val (conceptId, _, _, _, _) = it.split("\t")
-            if (conceptId != "id") {
-                codesSet.add(conceptId)
-            }
-        }
-        descriptionFiles.forEach {file ->
-            file.forEachLine {
-                val (_, _, active, _, conceptId, _, _, _, _) = it.split("\t")
-                if (active == "1") codesSet shouldContain conceptId
-            }
-        }
-    }
+//    "The International Snapshot release should not have active descriptions that correspond to a non existing code" {
+//        val conceptFile = resolver.getResources("classpath*:/snomed/international/snapshot/sct2_Concept_**.txt").firstOrNull()?.file
+//        val descriptionFiles = resolver.getResources("classpath*:/snomed/international/snapshot/sct2_Description_**.txt")
+//            .fold(setOf<File>()) { map, it ->
+//                map + it.file
+//            }
+//        conceptFile shouldNotBe null
+//        descriptionFiles.isNotEmpty() shouldBe true
+//        val codesSet = mutableSetOf<String>()
+//        conceptFile!!.forEachLine {
+//            val (conceptId, _, _, _, _) = it.split("\t")
+//            if (conceptId != "id") {
+//                codesSet.add(conceptId)
+//            }
+//        }
+//        descriptionFiles.forEach {file ->
+//            file.forEachLine {
+//                val (_, _, active, _, conceptId, _, _, _, _) = it.split("\t")
+//                if (active == "1") codesSet shouldContain conceptId
+//            }
+//        }
+//    }
 
     "All the active relationships in the Relationship file should be assigned to the corresponding code" {
         val conceptFile = File(conceptFilename)
@@ -164,27 +164,27 @@ class ReleaseFileParserTest : StringSpec({
             }
     }
 
-    "The International Snapshot release should not have active relationships that correspond to a non existing code" {
-        val conceptFile = resolver.getResources("classpath*:/snomed/international/snapshot/sct2_Concept_**.txt").firstOrNull()?.file
-        val relationshipFile = resolver.getResources("classpath*:/snomed/international/snapshot/sct2_Relationship_**.txt").firstOrNull()?.file
-
-        conceptFile shouldNotBe null
-        relationshipFile shouldNotBe null
-        val codesSet = mutableSetOf<String>()
-        conceptFile!!.forEachLine {
-            val (conceptId, _, _, _, _) = it.split("\t")
-            if (conceptId != "id") {
-                codesSet.add(conceptId)
-            }
-        }
-        relationshipFile!!.forEachLine {
-            val (_, _, active, _, sourceId, destinationId, _, _, _, _) = it.split("\t")
-            if (active == "1"){
-                codesSet shouldContain sourceId
-                codesSet shouldContain destinationId
-            }
-        }
-    }
+//    "The International Snapshot release should not have active relationships that correspond to a non existing code" {
+//        val conceptFile = resolver.getResources("classpath*:/snomed/international/snapshot/sct2_Concept_**.txt").firstOrNull()?.file
+//        val relationshipFile = resolver.getResources("classpath*:/snomed/international/snapshot/sct2_Relationship_**.txt").firstOrNull()?.file
+//
+//        conceptFile shouldNotBe null
+//        relationshipFile shouldNotBe null
+//        val codesSet = mutableSetOf<String>()
+//        conceptFile!!.forEachLine {
+//            val (conceptId, _, _, _, _) = it.split("\t")
+//            if (conceptId != "id") {
+//                codesSet.add(conceptId)
+//            }
+//        }
+//        relationshipFile!!.forEachLine {
+//            val (_, _, active, _, sourceId, destinationId, _, _, _, _) = it.split("\t")
+//            if (active == "1"){
+//                codesSet shouldContain sourceId
+//                codesSet shouldContain destinationId
+//            }
+//        }
+//    }
 
     "The conceptId, version, and active field of existing codes are correctly updated from the delta concepts file" {
         val conceptFile = File(conceptFilename)
