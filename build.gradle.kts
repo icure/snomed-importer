@@ -18,7 +18,7 @@ buildscript {
         maven { url = uri("https://repo.spring.io/plugins-release") }
     }
     dependencies {
-        classpath("com.taktik.gradle:gradle-plugin-docker-java:2.1.0")
+        classpath("com.taktik.gradle:gradle-plugin-docker-java:2.1.3")
     }
 }
 

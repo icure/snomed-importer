@@ -2,13 +2,10 @@ package com.icure.snomed.importer
 
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
-import io.icure.kraken.client.models.ListOfIdsDto
 import io.icure.kraken.client.models.filter.chain.FilterChain
 import io.icure.kraken.client.models.filter.code.CodeIdsByTypeCodeVersionIntervalFilter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File
-import java.util.concurrent.TimeUnit
-
 data class CodeBatches(
     val createBatch: List<CodeDto>,
     val updateBatch: List<CodeDto>
@@ -138,30 +135,52 @@ fun retrieveCodesAndUpdates(
 }
 
 @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
+suspend fun CodeApi.filterCodesRecursive(codeType: String, startCode: String, startVersion: String?, endCode: String, endVersion: String?, accumulator: List<CodeDto> = listOf()): List<CodeDto> {
+    val filterResult = this.filterCodesBy(
+        startKey = null,
+        startDocumentId = null,
+        limit = 1000,
+        skip = null,
+        sort = null,
+        desc = null,
+        filterChainCode = FilterChain(
+            CodeIdsByTypeCodeVersionIntervalFilter(
+                startType = codeType,
+                startCode = startCode,
+                startVersion = startVersion,
+                endType = codeType,
+                endCode = endCode,
+                endVersion = endVersion
+            )
+        )
+    )
+    return if (filterResult.rows.isEmpty() || filterResult.rows.size < 1000)
+        accumulator + filterResult.rows
+    else
+        this.filterCodesRecursive(
+            codeType,
+            filterResult.rows.last().code!!,
+            filterResult.rows.last().version,
+            endCode,
+            endVersion,
+            accumulator + filterResult.rows
+        )
+}
+
+@OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
 suspend fun batchDBUpdate(codes: Map<String, SnomedCTCodeUpdate>, codeType: String, chunkSize: Int, codeApi: CodeApi, progressBar: CommandlineProgressBar) =
     codes.keys.chunked(chunkSize).fold(listOf<String>()) { generatedIds, chunkCodesId ->
 
         progressBar.print()
         // First, I look for the existing codes in the database. If multiple CodeDTOs exist for the same code,
         // I only choose the one of the highest version
-        val existingCodes = codeApi.filterCodesBy(
-            startKey = null,
-            startDocumentId = null,
-            limit = null,
-            skip = null,
-            sort = null,
-            desc = null,
-            filterChainCode = FilterChain(
-                    CodeIdsByTypeCodeVersionIntervalFilter(
-                    startType = codeType,
-                    startCode = codes[chunkCodesId.first()]!!.code,
-                    startVersion = codes[chunkCodesId.first()]!!.version,
-                    endType = codeType,
-                    endCode = codes[chunkCodesId.last()]!!.code,
-                    endVersion = codes[chunkCodesId.last()]!!.version
-                )
-            )
-        ).rows.groupBy {
+        val existingCodes = codeApi.filterCodesRecursive(
+            codeType = codeType,
+            startCode = codes[chunkCodesId.first()]!!.code,
+            startVersion = codes[chunkCodesId.first()]!!.version,
+            endCode = codes[chunkCodesId.last()]!!.code,
+            endVersion = codes[chunkCodesId.last()]!!.version
+        ).groupBy {
             Pair(it.type!!, it.code!!)
         }.mapNotNull { groupedCodes ->
             //First, I check that the code is among the ones to be modified

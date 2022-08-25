@@ -34,8 +34,8 @@ class CommandlineProgressBar(
 
     fun step(numSteps: Int = 1) {
         val steps = maxCount?.let{
-            if(count + numSteps > it) numSteps
-            else it - count
+            if(count + numSteps > it) it - count
+            else numSteps
         } ?: numSteps
         val end = System.currentTimeMillis()
         lastCheck?.let {
