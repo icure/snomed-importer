@@ -135,11 +135,11 @@ fun retrieveCodesAndUpdates(
 }
 
 @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
-suspend fun CodeApi.filterCodesRecursive(codeType: String, startCode: String, startVersion: String?, endCode: String, endVersion: String?, accumulator: List<CodeDto> = listOf()): List<CodeDto> {
+suspend fun CodeApi.filterCodesRecursive(codeType: String, startCode: String, startVersion: String?, endCode: String, endVersion: String?, limit: Int, accumulator: List<CodeDto> = listOf()): List<CodeDto> {
     val filterResult = this.filterCodesBy(
         startKey = null,
         startDocumentId = null,
-        limit = 1000,
+        limit = limit,
         skip = null,
         sort = null,
         desc = null,
@@ -154,7 +154,7 @@ suspend fun CodeApi.filterCodesRecursive(codeType: String, startCode: String, st
             )
         )
     )
-    return if (filterResult.rows.isEmpty() || filterResult.rows.size < 1000)
+    return if (filterResult.rows.isEmpty() || filterResult.rows.size < limit)
         accumulator + filterResult.rows
     else
         this.filterCodesRecursive(
@@ -163,6 +163,7 @@ suspend fun CodeApi.filterCodesRecursive(codeType: String, startCode: String, st
             filterResult.rows.last().version,
             endCode,
             endVersion,
+            limit,
             accumulator + filterResult.rows
         )
 }
@@ -179,7 +180,8 @@ suspend fun batchDBUpdate(codes: Map<String, SnomedCTCodeUpdate>, codeType: Stri
             startCode = codes[chunkCodesId.first()]!!.code,
             startVersion = codes[chunkCodesId.first()]!!.version,
             endCode = codes[chunkCodesId.last()]!!.code,
-            endVersion = codes[chunkCodesId.last()]!!.version
+            endVersion = codes[chunkCodesId.last()]!!.version,
+            limit = chunkSize
         ).groupBy {
             Pair(it.type!!, it.code!!)
         }.mapNotNull { groupedCodes ->

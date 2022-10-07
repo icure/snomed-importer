@@ -1,5 +1,7 @@
 package com.icure.snomed.importer
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.icure.kraken.client.apis.CodeApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -44,7 +46,7 @@ class ImporterApplication : CommandLineRunner {
         val snomedPassword = System.getenv("SNOMED_PWD")!!
         val chunkSize = System.getenv("CHUNK_SIZE")!!.toInt()
         val releaseCode = if (System.getenv("RELEASE_TYPE") == "INTERNATIONAL") 167
-            else if (System.getenv("RELEASE_TYPE") == "BELGIQUE") 190440
+            else if (System.getenv("RELEASE_TYPE") == "BELGIUM") 190440
             else 0
 
         val downloader = ReleaseDownloader(basePath)
@@ -71,7 +73,11 @@ class ImporterApplication : CommandLineRunner {
                 ?.lowercase()
                 ?: throw IllegalStateException("Cannot infer region code from filename!")
 
-        val codes = retrieveCodesAndUpdates(region, conceptFile, descriptionFiles, relationshipFile)
+        val codes = retrieveCodesAndUpdates(
+            if (region == "int") "xx" else region,
+            conceptFile,
+            descriptionFiles,
+            relationshipFile)
 
         runBlocking {
 
