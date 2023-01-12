@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.SingletonSupport
+import com.fasterxml.jackson.module.kotlin.readValue
 import java.io.File
 import java.math.BigInteger
 import java.net.URI
@@ -74,28 +75,13 @@ data class Release (
     }
 }
 
-fun HttpRequest.Builder.postMultipartFormData(boundary: String, data: Map<String, Any>): HttpRequest.Builder {
-    val byteArrays = ArrayList<ByteArray>()
-    val separator = "--$boundary\r\nContent-Disposition: form-data; name=".toByteArray(StandardCharsets.UTF_8)
-
-    for (entry in data.entries) {
-        byteArrays.add(separator)
-        byteArrays.add("\"${entry.key}\"\r\n\r\n${entry.value}\r\n".toByteArray(StandardCharsets.UTF_8))
-    }
-    byteArrays.add("--$boundary--".toByteArray(StandardCharsets.UTF_8))
-
-    this.header("Content-Type", "multipart/form-data;boundary=$boundary")
-        .POST(HttpRequest.BodyPublishers.ofByteArrays(byteArrays))
-    return this
-}
-
 class SnomedReleaseDownloader(
     private val baseFolder: String
 ) {
     private val client = HttpClient.newHttpClient()
 
     companion object {
-        private val objectMapper: ObjectMapper? = ObjectMapper().registerModule(
+        private val objectMapper: ObjectMapper = ObjectMapper().registerModule(
             KotlinModule.Builder()
                 .nullIsSameAsDefault(nullIsSameAsDefault = false)
                 .reflectionCacheSize(reflectionCacheSize = 512)
@@ -107,7 +93,7 @@ class SnomedReleaseDownloader(
         )
     }
 
-    fun getSnomedReleases(releaseCode: Int): Release? {
+    fun getSnomedReleases(releaseCode: Int): Release {
         // Release code is 167 for international and 190440 for Belgium
         val request = HttpRequest.newBuilder()
             .uri(URI.create("https://mlds.ihtsdotools.org/api/releasePackages/$releaseCode"))
@@ -115,7 +101,7 @@ class SnomedReleaseDownloader(
             .build()
 
         val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-        return objectMapper?.readValue(response.body(), object : TypeReference<Release>() {})
+        return objectMapper.readValue(response.body())
     }
 
     private fun getSessionCookie(username: String, password: String): String? {

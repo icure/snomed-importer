@@ -11,6 +11,15 @@ import io.kotest.matchers.shouldNotBe
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
 import java.io.File
 
+operator fun List<String>.component3() = this[2]
+operator fun List<String>.component4() = this[3]
+operator fun List<String>.component5() = this[4]
+operator fun List<String>.component6() = this[5]
+operator fun List<String>.component7() = this[6]
+operator fun List<String>.component8() = this[7]
+operator fun List<String>.component9() = this[8]
+operator fun List<String>.component10() = this[9]
+
 class ReleaseFileParserTest : StringSpec({
 
     val resolver = PathMatchingResourcePatternResolver(javaClass.classLoader)
