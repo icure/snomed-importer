@@ -1,7 +1,10 @@
 package com.icure.snomed.importer
 
-import com.fasterxml.jackson.core.type.TypeReference
-import com.fasterxml.jackson.databind.ObjectMapper
+import com.icure.snomed.importer.download.SnomedReleaseDownloader
+import com.icure.snomed.importer.utils.CommandlineProgressBar
+import com.icure.snomed.importer.utils.basicAuth
+import com.icure.snomed.importer.utils.batchDBUpdate
+import com.icure.snomed.importer.utils.retrieveCodesAndUpdates
 import io.icure.kraken.client.apis.CodeApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
@@ -9,15 +12,6 @@ import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
 import java.io.File
-
-operator fun List<String>.component3() = this[2]
-operator fun List<String>.component4() = this[3]
-operator fun List<String>.component5() = this[4]
-operator fun List<String>.component6() = this[5]
-operator fun List<String>.component7() = this[6]
-operator fun List<String>.component8() = this[7]
-operator fun List<String>.component9() = this[8]
-operator fun List<String>.component10() = this[9]
 
 data class SnomedCTCodeUpdate(
     val code: String,
@@ -49,7 +43,7 @@ class ImporterApplication : CommandLineRunner {
             else if (System.getenv("RELEASE_TYPE") == "BELGIUM") 190440
             else 0
 
-        val downloader = ReleaseDownloader(basePath)
+        val downloader = SnomedReleaseDownloader(basePath)
         val release = downloader.getSnomedReleases(releaseCode) ?: throw IllegalStateException("No release list found")
         val latestRelease = release.getLatestRelease() ?: throw IllegalStateException("Cannot get latest release")
         val latestRF2 = latestRelease.getRF2() ?: throw IllegalStateException("Cannot get latest RF2")

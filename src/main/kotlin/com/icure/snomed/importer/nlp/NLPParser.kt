@@ -1,4 +1,4 @@
-package com.icure.snomed.importer
+package com.icure.snomed.importer.nlp
 
 import edu.stanford.nlp.io.IOUtils
 import edu.stanford.nlp.pipeline.StanfordCoreNLP
@@ -19,7 +19,6 @@ fun createSentenceParser(language: String): SentenceParser {
         else -> StopWordsParser(language)
     }
 }
-
 
 class CoreNLPParser(
     private val allowedTags: Set<String>,

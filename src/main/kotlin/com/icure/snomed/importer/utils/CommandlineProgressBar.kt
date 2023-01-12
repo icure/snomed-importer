@@ -1,4 +1,4 @@
-package com.icure.snomed.importer
+package com.icure.snomed.importer.utils
 
 import java.lang.Integer.max
 import java.util.concurrent.TimeUnit

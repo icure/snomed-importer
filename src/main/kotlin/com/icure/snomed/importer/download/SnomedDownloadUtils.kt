@@ -1,4 +1,4 @@
-package com.icure.snomed.importer
+package com.icure.snomed.importer.download
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -89,7 +89,7 @@ fun HttpRequest.Builder.postMultipartFormData(boundary: String, data: Map<String
     return this
 }
 
-class ReleaseDownloader(
+class SnomedReleaseDownloader(
     private val baseFolder: String
 ) {
     private val client = HttpClient.newHttpClient()

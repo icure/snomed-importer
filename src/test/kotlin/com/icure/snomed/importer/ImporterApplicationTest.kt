@@ -1,6 +1,10 @@
 package com.icure.snomed.importer
 
 import TestFileGenerator
+import com.icure.snomed.importer.utils.CommandlineProgressBar
+import com.icure.snomed.importer.utils.basicAuth
+import com.icure.snomed.importer.utils.batchDBUpdate
+import com.icure.snomed.importer.utils.retrieveCodesAndUpdates
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.ListOfIdsDto

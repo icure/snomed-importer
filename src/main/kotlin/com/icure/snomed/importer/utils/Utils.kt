@@ -1,15 +1,28 @@
-package com.icure.snomed.importer
+package com.icure.snomed.importer.utils
 
+import com.icure.snomed.importer.nlp.SentenceParser
+import com.icure.snomed.importer.SnomedCTCodeUpdate
+import com.icure.snomed.importer.nlp.createSentenceParser
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.filter.chain.FilterChain
 import io.icure.kraken.client.models.filter.code.CodeIdsByTypeCodeVersionIntervalFilter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File
+
 data class CodeBatches(
     val createBatch: List<CodeDto>,
     val updateBatch: List<CodeDto>
 )
+
+operator fun List<String>.component3() = this[2]
+operator fun List<String>.component4() = this[3]
+operator fun List<String>.component5() = this[4]
+operator fun List<String>.component6() = this[5]
+operator fun List<String>.component7() = this[6]
+operator fun List<String>.component8() = this[7]
+operator fun List<String>.component9() = this[8]
+operator fun List<String>.component10() = this[9]
 
 fun basicAuth(userName: String, password: String) =
     "Basic ${java.util.Base64.getEncoder().encodeToString("$userName:$password".toByteArray())}"

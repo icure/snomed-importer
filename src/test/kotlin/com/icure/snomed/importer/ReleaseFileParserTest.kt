@@ -1,6 +1,8 @@
 package com.icure.snomed.importer
 
 import TestFileGenerator
+import com.icure.snomed.importer.utils.makeCodeFromUpdate
+import com.icure.snomed.importer.utils.retrieveCodesAndUpdates
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
