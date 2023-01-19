@@ -16,6 +16,9 @@ class LoincReleaseDownloader(
     private val client = HttpClient.newHttpClient()
 
     init {
+        File(baseFolder).let {
+            if(it.exists()) it.deleteRecursively()
+        }
         File(baseFolder).mkdir()
     }
 

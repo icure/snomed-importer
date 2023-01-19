@@ -1,11 +1,23 @@
 package com.icure.snomed.importer.utils
 
-import com.icure.snomed.importer.SnomedCTCodeUpdate
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.filter.chain.FilterChain
 import io.icure.kraken.client.models.filter.code.CodeIdsByTypeCodeVersionIntervalFilter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import java.io.File
+
+data class CodeUpdate(
+    val code: String,
+    val regions: MutableSet<String> = mutableSetOf(),
+    val version: String? = null,
+    val disabled: Boolean? = null,
+    val description: MutableMap<String, String> = mutableMapOf(),
+    val synonyms: MutableMap<String, List<String>> = mutableMapOf(),
+    val relationsAdd: MutableMap<String, List<String>> = mutableMapOf(),
+    val relationsRemove: MutableMap<String, List<String>> = mutableMapOf(),
+    val searchTerms: MutableMap<String, Set<String>> = mutableMapOf()
+)
 
 data class CodeBatches(
     val createBatch: List<CodeDto>,
@@ -27,6 +39,15 @@ fun basicAuth(userName: String, password: String) =
 fun sanitize(text: String): String {
     return text.replace(",", "\\,")
 }
+
+fun File.fieldColumnAssociation() =
+    this.readLines()
+        .first()
+        .split(",")
+        .map { it.removeSurrounding("\"") }
+        .foldIndexed(emptyMap<String, Int>()) { id, acc, it ->
+            acc + (it to id)
+        }
 
 @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
 suspend fun CodeApi.filterCodesRecursive(codeType: String, startCode: String, startVersion: String?, endCode: String, endVersion: String?, limit: Int, accumulator: List<CodeDto> = listOf()): List<CodeDto> {
@@ -62,7 +83,7 @@ suspend fun CodeApi.filterCodesRecursive(codeType: String, startCode: String, st
         )
 }
 
-fun makeCodeFromUpdate(update: SnomedCTCodeUpdate, type: String, oldCode: CodeDto? = null): CodeDto {
+fun makeCodeFromUpdate(update: CodeUpdate, type: String, oldCode: CodeDto? = null): CodeDto {
     val newLinks = oldCode?.qualifiedLinks?.toMutableMap() ?: mutableMapOf()
     update.relationsAdd.forEach { (k, v) ->
         newLinks[k] = ((newLinks[k]?.toSet() ?: setOf()) + v.toSet()).toList()
@@ -72,7 +93,7 @@ fun makeCodeFromUpdate(update: SnomedCTCodeUpdate, type: String, oldCode: CodeDt
     }
 
     update.synonyms.forEach { (k, v) ->
-        if (update.description[k] == null) {
+        if (update.description[k].isNullOrBlank()) {
             update.description[k] = v[0]
         }
     }
@@ -81,7 +102,7 @@ fun makeCodeFromUpdate(update: SnomedCTCodeUpdate, type: String, oldCode: CodeDt
         id = "$type|${update.code}|${update.version ?: oldCode.version}",
         version = update.version ?: oldCode.version,
         label = oldCode.label?.plus(update.description) ?: update.description,
-        regions = (oldCode.regions.toSet() + setOf(update.region)).toList(),
+        regions = (oldCode.regions.toSet() + update.regions.toSet()).toList(),
         qualifiedLinks = newLinks.filter { (_, v) -> v.isNotEmpty() },
         searchTerms = oldCode.searchTerms + update.searchTerms,
         disabled = update.disabled ?: oldCode.disabled
@@ -91,7 +112,7 @@ fun makeCodeFromUpdate(update: SnomedCTCodeUpdate, type: String, oldCode: CodeDt
         code = update.code,
         version = update.version,
         label = update.description,
-        regions = listOf(update.region),
+        regions = update.regions.toList(),
         qualifiedLinks = newLinks.filter { (_, v) -> v.isNotEmpty() },
         searchTerms = update.searchTerms,
         disabled = update.disabled ?: false
@@ -99,7 +120,7 @@ fun makeCodeFromUpdate(update: SnomedCTCodeUpdate, type: String, oldCode: CodeDt
 }
 
 @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
-suspend fun batchDBUpdate(codes: Map<String, SnomedCTCodeUpdate>, codeType: String, chunkSize: Int, codeApi: CodeApi, progressBar: CommandlineProgressBar) =
+suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chunkSize: Int, codeApi: CodeApi, progressBar: CommandlineProgressBar) =
     codes.keys.chunked(chunkSize).fold(listOf<String>()) { generatedIds, chunkCodesId ->
 
         progressBar.print()

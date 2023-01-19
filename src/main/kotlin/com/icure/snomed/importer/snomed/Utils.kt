@@ -1,10 +1,8 @@
 package com.icure.snomed.importer.snomed
 
-import com.icure.snomed.importer.SnomedCTCodeUpdate
 import com.icure.snomed.importer.nlp.SentenceParser
 import com.icure.snomed.importer.nlp.createSentenceParser
 import com.icure.snomed.importer.utils.*
-import io.icure.kraken.client.models.CodeDto
 import java.io.File
 
 // Adds the codes from a delta release
@@ -13,9 +11,9 @@ fun retrieveCodesAndUpdates(
     conceptFile: File,
     descriptionFiles: Set<File>,
     relationshipFile: File
-): Map<String, SnomedCTCodeUpdate> {
+): Map<String, CodeUpdate> {
     val parsers = mutableMapOf<String, SentenceParser>()    // Parsers in different languages to elaborate search terms
-    val codes = sortedMapOf<String, SnomedCTCodeUpdate>(compareBy{ it.lowercase() })
+    val codes = sortedMapOf<String, CodeUpdate>(compareBy{ it.lowercase() })
 
     // First, I parse all the concepts
     val conceptsBar = CommandlineProgressBar("Parsing codes")
@@ -24,7 +22,7 @@ fun retrieveCodesAndUpdates(
         conceptsBar.step()
         val (conceptId, conceptVersion, active, _, _) = it.split("\t")
         if (conceptId != "id"){
-            codes[conceptId] = SnomedCTCodeUpdate(conceptId, region, conceptVersion, active == "0")
+            codes[conceptId] = CodeUpdate(conceptId, mutableSetOf(region), conceptVersion, active == "0")
         }
     }
     conceptsBar.print()
@@ -38,7 +36,7 @@ fun retrieveCodesAndUpdates(
             val (_, _, active, _, conceptId, language, typeId, term, _) = it.split("\t")
             if (active == "1") {
                 //Creates a new dummy code if it doesn't exist a code relative do this description
-                if (codes[conceptId] == null) codes[conceptId] = SnomedCTCodeUpdate(conceptId, region)
+                if (codes[conceptId] == null) codes[conceptId] = CodeUpdate(conceptId, mutableSetOf(region))
 
                 // Create search terms
                 val searchTerms = parsers[language]?.getTokens(term)
@@ -67,7 +65,7 @@ fun retrieveCodesAndUpdates(
         val (_, _, active, _, sourceId, destinationId, _, typeId, _, _) = it.split("\t")
         if (sourceId != "sourceId") {
             //Creates a new dummy code if it doesn't exist a code relative do this description
-            if (codes[sourceId] == null) codes[sourceId] = SnomedCTCodeUpdate(sourceId, region)
+            if (codes[sourceId] == null) codes[sourceId] = CodeUpdate(sourceId, mutableSetOf(region))
 
             // If the relation is active, then it must be added
             if (active == "1") {

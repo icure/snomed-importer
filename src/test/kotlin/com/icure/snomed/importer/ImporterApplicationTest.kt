@@ -1,10 +1,8 @@
 package com.icure.snomed.importer
 
 import TestFileGenerator
-import com.icure.snomed.importer.utils.CommandlineProgressBar
-import com.icure.snomed.importer.utils.basicAuth
-import com.icure.snomed.importer.utils.batchDBUpdate
-import com.icure.snomed.importer.utils.retrieveCodesAndUpdates
+import com.icure.snomed.importer.snomed.retrieveCodesAndUpdates
+import com.icure.snomed.importer.utils.*
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.ListOfIdsDto
@@ -15,9 +13,9 @@ import io.kotest.matchers.shouldNotBe
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File
 
-fun CodeDto.containsUpdate(other: SnomedCTCodeUpdate): Boolean {
+fun CodeDto.containsUpdate(other: CodeUpdate): Boolean {
     return this.code == other.code &&
-            this.regions.contains(other.region) &&
+            this.regions.intersect(other.regions).isNotEmpty() &&
             (other.disabled == null || this.disabled == other.disabled) &&
             other.description.all { this.label != null && this.label!![it.key] == it.value } &&
             other.relationsRemove.all {

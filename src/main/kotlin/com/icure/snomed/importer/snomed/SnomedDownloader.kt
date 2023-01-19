@@ -4,7 +4,6 @@ import com.icure.snomed.importer.download.SnomedReleaseDownloader
 import com.icure.snomed.importer.utils.CommandlineProgressBar
 import com.icure.snomed.importer.utils.basicAuth
 import com.icure.snomed.importer.utils.batchDBUpdate
-import com.icure.snomed.importer.utils.retrieveCodesAndUpdates
 import io.icure.kraken.client.apis.CodeApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File

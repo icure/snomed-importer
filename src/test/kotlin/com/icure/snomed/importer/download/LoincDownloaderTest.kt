@@ -1,6 +1,7 @@
 package com.icure.snomed.importer.download
 
 import io.kotest.core.spec.style.StringSpec
+import java.io.File
 
 class LoincDownloaderTest : StringSpec({
 
