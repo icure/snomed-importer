@@ -3,7 +3,6 @@ package com.icure.importer.snomed
 import com.icure.importer.nlp.SentenceParser
 import com.icure.importer.nlp.createSentenceParser
 import com.icure.importer.utils.CodeUpdate
-import com.icure.importer.utils.CommandlineProgressBar
 import com.icure.importer.utils.sanitize
 import com.icure.importer.utils.*
 import java.io.File
@@ -19,23 +18,16 @@ fun retrieveCodesAndUpdates(
     val codes = sortedMapOf<String, CodeUpdate>(compareBy{ it.lowercase() })
 
     // First, I parse all the concepts
-    val conceptsBar = CommandlineProgressBar("Parsing codes")
     conceptFile.forEachLine {
-        conceptsBar.print()
-        conceptsBar.step()
         val (conceptId, conceptVersion, active, _, _) = it.split("\t")
         if (conceptId != "id"){
             codes[conceptId] = CodeUpdate(conceptId, mutableSetOf(region), conceptVersion, active == "0")
         }
     }
-    conceptsBar.print()
-    println("")
+
     // Second, I parse all the descriptions, and I assign them to the concepts
     descriptionFiles.forEach {file ->
-        val descBar = CommandlineProgressBar("Parsing descriptions from ${file.name}")
         file.forEachLine {
-            descBar.print()
-            descBar.step()
             val (_, _, active, _, conceptId, language, typeId, term, _) = it.split("\t")
             if (active == "1") {
                 //Creates a new dummy code if it doesn't exist a code relative do this description
@@ -55,16 +47,11 @@ fun retrieveCodesAndUpdates(
                     codes[conceptId]!!.synonyms[language]?.plus(listOf(sanitize(term))) ?: listOf(sanitize(term))
             }
         }
-        descBar.print()
-        println("")
     }
 
 
     // Third, I parse the relations, and I assign them to the concepts
-    val relBar = CommandlineProgressBar("Parsing relationship file")
     relationshipFile.forEachLine {
-        relBar.print()
-        relBar.step()
         val (_, _, active, _, sourceId, destinationId, _, typeId, _, _) = it.split("\t")
         if (sourceId != "sourceId") {
             //Creates a new dummy code if it doesn't exist a code relative do this description
@@ -82,8 +69,6 @@ fun retrieveCodesAndUpdates(
             }
         }
     }
-    relBar.print()
-    println("")
 
     return codes
 }

@@ -4,10 +4,11 @@ import com.icure.importer.download.LoincReleaseDownloader
 import com.icure.importer.nlp.createSentenceParser
 import com.icure.importer.utils.*
 import io.icure.kraken.client.apis.CodeApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import java.io.File
-import kotlin.random.Random
 
 @Component
 class LoincDownloadLogic(
@@ -39,7 +40,7 @@ class LoincDownloadLogic(
         processCache.getProcess(processId)?.let {
             processCache.updateProcess(processId, it.copy(
                 started = System.currentTimeMillis(),
-                status = ProcessStatus.STARTED
+                status = ProcessStatus.PARSING
             ))
         }
 
@@ -63,7 +64,7 @@ class LoincDownloadLogic(
                 newCodes[fields[0]] = CodeUpdate(
                     fields[tableColumns["LOINC_NUM"]!!],
                     mutableSetOf("xx"),
-                    if (Random.nextBoolean()) "4" else fields[tableColumns["VersionLastChanged"]!!],
+                    fields[tableColumns["VersionLastChanged"]!!],
                     fields[tableColumns["STATUS"]!!] != "ACTIVE",
                     mutableMapOf("en" to getLoincFQN(fields, tableColumns)),
                     mutableMapOf("en" to names),
@@ -104,14 +105,24 @@ class LoincDownloadLogic(
 
         val codeApi = CodeApi(basePath = iCureUrl, authHeader = basicAuth(iCureUsername, iCurePassword))
 
-        batchDBUpdate(
-            newCodes,
-            "LOINC",
-            chunkSize,
-            codeApi,
-            processCache,
-            processId
-        )
+        processCache.getProcess(processId)?.let {
+            processCache.updateProcess(processId, it.copy(
+                status = ProcessStatus.UPLOADING,
+                uploadStarted = System.currentTimeMillis(),
+                total = newCodes.size
+            ))
+        }
+
+        withContext(Dispatchers.IO) {
+            batchDBUpdate(
+                newCodes,
+                "LOINC",
+                chunkSize,
+                codeApi,
+                processCache,
+                processId
+            )
+        }
 
     }
 

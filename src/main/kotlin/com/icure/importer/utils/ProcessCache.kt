@@ -5,12 +5,15 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import org.springframework.stereotype.Component
 import java.util.concurrent.TimeUnit
 
-enum class ProcessStatus{ QUEUED, STARTED, COMPLETED, STOPPED }
+enum class ProcessStatus{ QUEUED, PARSING, UPLOADING, COMPLETED, STOPPED }
 
 data class Process(
     val id: String,
     val status: ProcessStatus,
     val started: Long,
+    val uploadStarted: Long? = null,
+    val uploaded: Int? = null,
+    val total: Int? = null,
     val eta: Long? = null,
     val stacktrace: String? = null
 ) {
@@ -18,7 +21,8 @@ data class Process(
     fun updateETA(total: Int, processed: Int) =
         if (processed > 0)
             copy(
-                eta = (((System.currentTimeMillis() - started)/processed) * (maxOf(0, total-processed))) + System.currentTimeMillis()
+                eta = (((System.currentTimeMillis() - (uploadStarted ?: System.currentTimeMillis()))/processed) * (maxOf(0, total-processed))) + System.currentTimeMillis(),
+                uploaded = processed
             )
         else this
 

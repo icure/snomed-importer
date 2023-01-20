@@ -1,62 +1,99 @@
 package com.icure.importer.snomed
 
 import com.icure.importer.download.SnomedReleaseDownloader
-import com.icure.importer.utils.CommandlineProgressBar
-import com.icure.importer.utils.basicAuth
-import com.icure.importer.utils.batchDBUpdate
+import com.icure.importer.utils.*
 import io.icure.kraken.client.apis.CodeApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.withContext
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.stereotype.Component
 import java.io.File
 
-@OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
-suspend fun updateSnomedCodes(
-    basePath: String,
-    releaseCode: Int,
-    snomedUserName: String,
-    snomedPassword: String,
-    userName: String,
-    password: String,
-    iCureUrl: String,
-    chunkSize: Int
+@Component
+class SnomedDownloadLogic(
+    val processCache: ProcessCache,
+    @Value("\${importer.base-folder}") private val basePath: String,
+    @Value("\${importer.chunk-size}") private val chunkSize: Int,
 ) {
-    val downloader = SnomedReleaseDownloader(basePath)
-    val release = downloader.getSnomedReleases(releaseCode)
-    val latestRelease = release.getLatestRelease() ?: throw IllegalStateException("Cannot get latest release")
-    val latestRF2 = latestRelease.getRF2() ?: throw IllegalStateException("Cannot get latest RF2")
-    downloader.downloadRelease(snomedUserName, snomedPassword, latestRF2)
-    if (!downloader.checkMD5(latestRelease)) throw IllegalStateException("Downloaded release MD5 does not match")
-    val folders = downloader.getReleaseTypes(latestRF2)
 
-    val folder = folders.delta ?: folders.snapshot ?: throw IllegalStateException("No valid release found")
+    @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
+    suspend fun updateSnomedCodes(
+        processId: String,
+        releaseCode: Int,
+        releaseType: String,
+        snomedUsername: String,
+        snomedPassword: String,
+        iCureUrl: String,
+        iCureUsername: String,
+        iCurePassword: String,
+    ) {
 
-    val conceptFile = File(folder).walk().filter { "sct2_Concept_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull() ?:
-    throw IllegalStateException("Cannot find Concept File")
+        processCache.getProcess(processId)?.let {
+            processCache.updateProcess(processId, it.copy(
+                started = System.currentTimeMillis(),
+                status = ProcessStatus.PARSING
+            ))
+        }
 
-    val descriptionFiles = File(folder).walk().filter { "sct2_Description_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.toSet()
-    if (descriptionFiles.isEmpty()) throw IllegalStateException("No description file found")
+        val downloader = SnomedReleaseDownloader(basePath)
+        val release = downloader.getSnomedReleases(releaseCode)
+        val latestRelease = release.getLatestRelease() ?: throw IllegalStateException("Cannot get latest release")
+        val latestRF2 = latestRelease.getRF2() ?: throw IllegalStateException("Cannot get latest RF2")
+        downloader.downloadRelease(snomedUsername, snomedPassword, latestRF2)
+        if (!downloader.checkMD5(latestRelease)) throw IllegalStateException("Downloaded release MD5 does not match")
+        val folders = downloader.getReleaseTypes(latestRF2)
 
-    val relationshipFile = File(folder).walk().filter { "sct2_Relationship_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull() ?:
-    throw IllegalStateException("Cannot find Concept File")
+        val folder = when(releaseType) {
+            "snapshot" -> folders.snapshot
+            "delta" -> folders.delta
+            else -> null
+        } ?: throw IllegalStateException("No valid release found")
 
-    val region =
-        Regex(pattern = ".*sct2_Concept_.+_([A-Z]{2,3}).*").find(conceptFile.name)?.groupValues?.get(1)
-            ?.lowercase()
-            ?: throw IllegalStateException("Cannot infer region code from filename!")
+        val conceptFile =
+            File(folder).walk().filter { "sct2_Concept_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.firstOrNull()
+                ?: throw IllegalStateException("Cannot find Concept File")
 
-    val codes = retrieveCodesAndUpdates(
-        if (region == "int") "xx" else region,
-        conceptFile,
-        descriptionFiles,
-        relationshipFile)
+        val descriptionFiles =
+            File(folder).walk().filter { "sct2_Description_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }.toSet()
+        if (descriptionFiles.isEmpty()) throw IllegalStateException("No description file found")
 
-    val codeApi = CodeApi(basePath = iCureUrl, authHeader = basicAuth(userName, password))
+        val relationshipFile =
+            File(folder).walk().filter { "sct2_Relationship_[\\da-zA-Z_\\-]+.txt".toRegex().matches(it.name) }
+                .firstOrNull() ?: throw IllegalStateException("Cannot find Concept File")
 
-//    batchDBUpdate(
-//        codes,
-//        "SNOMED",
-//        chunkSize,
-//        codeApi,
-//        CommandlineProgressBar("Updating codes...", codes.size, 5)
-//    )
-    println("")
+        val region =
+            Regex(pattern = ".*sct2_Concept_.+_([A-Z]{2,3}).*").find(conceptFile.name)?.groupValues?.get(1)
+                ?.lowercase()
+                ?: throw IllegalStateException("Cannot infer region code from filename!")
+
+        val codes = retrieveCodesAndUpdates(
+            if (region == "int") "xx" else region,
+            conceptFile,
+            descriptionFiles,
+            relationshipFile
+        )
+
+        val codeApi = CodeApi(basePath = iCureUrl, authHeader = basicAuth(iCureUsername, iCurePassword))
+
+        processCache.getProcess(processId)?.let {
+            processCache.updateProcess(processId, it.copy(
+                status = ProcessStatus.UPLOADING,
+                uploadStarted = System.currentTimeMillis(),
+                total = codes.size
+            ))
+        }
+
+        withContext(Dispatchers.IO) {
+            batchDBUpdate(
+                codes,
+                "SNOMED",
+                chunkSize,
+                codeApi,
+                processCache,
+                processId
+            )
+        }
+
+    }
 }
