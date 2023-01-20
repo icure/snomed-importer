@@ -4,7 +4,7 @@ import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.filter.chain.FilterChain
 import io.icure.kraken.client.models.filter.code.CodeIdsByTypeCodeVersionIntervalFilter
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.*
 import java.io.File
 
 data class CodeUpdate(
@@ -121,49 +121,71 @@ fun makeCodeFromUpdate(update: CodeUpdate, type: String, oldCode: CodeDto? = nul
 
 @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
 suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chunkSize: Int, codeApi: CodeApi, cache: ProcessCache, processId: String) =
-    codes.keys.chunked(chunkSize).fold(listOf<String>()) { generatedIds, chunkCodesId ->
-
+    withContext(Dispatchers.IO) {
         cache.getProcess(processId)?.let {
-            cache.updateProcess(processId, it.updateETA(codes.size, generatedIds.size))
+            cache.updateProcess(processId, it.copy(
+                status = ProcessStatus.UPLOADING,
+                uploadStarted = System.currentTimeMillis(),
+                total = codes.size,
+                message = "Uploading codes to iCure backend"
+            ))
         }
+        codes.keys.chunked(chunkSize).fold(listOf<String>()) { generatedIds, chunkCodesId ->
 
-        // First, I look for the existing codes in the database. If multiple CodeDTOs exist for the same code,
-        // I only choose the one of the highest version
-        val existingCodes = codeApi.filterCodesRecursive(
-            codeType = codeType,
-            startCode = codes[chunkCodesId.first()]!!.code,
-            startVersion = codes[chunkCodesId.first()]!!.version,
-            endCode = codes[chunkCodesId.last()]!!.code,
-            endVersion = codes[chunkCodesId.last()]!!.version,
-            limit = chunkSize
-        ).groupBy {
-            Pair(it.type!!, it.code!!)
-        }.mapNotNull { groupedCodes ->
-            //First, I check that the code is among the ones to be modified
-            codes[groupedCodes.key.second]?.let { code ->
-                // If the update has a version and matches with an existing one, then I want to update that code
-                groupedCodes.value.firstOrNull { it.version == code.version }
-                    ?:
-                    if (code.version == null) groupedCodes.value.maxByOrNull { it.version!!.lowercase() } // If the update has no version, I want to update the latest code
-                    else null // Else I want to create a new code from the update
+            cache.getProcess(processId)?.let {
+                cache.updateProcess(processId, it.updateETA(codes.size, generatedIds.size))
             }
-        }.associateBy { it.code }
 
-        // For each code in the chunk
-        val newCodes = chunkCodesId.fold(CodeBatches(listOf(), listOf())) { acc, it ->
-            // If the code exists, I have to update it
-            existingCodes[it]?.let { existingCode ->
-                CodeBatches(acc.createBatch, acc.updateBatch + makeCodeFromUpdate(codes[it]!!, codeType, existingCode))
-            } ?: codes[it]?.version?.let{ _ -> // Otherwise, I create a new code
-                // If the code does not exist and has a version, I create a new code
-                CodeBatches(acc.createBatch + makeCodeFromUpdate(codes[it]!!, codeType), acc.updateBatch)
-                // If the code does not exist and does not have a version, we have a problem
-            } ?: acc
+            // First, I look for the existing codes in the database. If multiple CodeDTOs exist for the same code,
+            // I only choose the one of the highest version
+            val existingCodes = codeApi.filterCodesRecursive(
+                codeType = codeType,
+                startCode = codes[chunkCodesId.first()]!!.code,
+                startVersion = codes[chunkCodesId.first()]!!.version,
+                endCode = codes[chunkCodesId.last()]!!.code,
+                endVersion = codes[chunkCodesId.last()]!!.version,
+                limit = chunkSize
+            ).groupBy {
+                Pair(it.type!!, it.code!!)
+            }.mapNotNull { groupedCodes ->
+                //First, I check that the code is among the ones to be modified
+                codes[groupedCodes.key.second]?.let { code ->
+                    // If the update has a version and matches with an existing one, then I want to update that code
+                    groupedCodes.value.firstOrNull { it.version == code.version }
+                        ?:
+                        if (code.version == null) groupedCodes.value.maxByOrNull { it.version!!.lowercase() } // If the update has no version, I want to update the latest code
+                        else null // Else I want to create a new code from the update
+                }
+            }.associateBy { it.code }
+
+            // For each code in the chunk
+            val newCodes = chunkCodesId.fold(CodeBatches(listOf(), listOf())) { acc, it ->
+                // If the code exists, I have to update it
+                existingCodes[it]?.let { existingCode ->
+                    CodeBatches(acc.createBatch, acc.updateBatch + makeCodeFromUpdate(codes[it]!!, codeType, existingCode))
+                } ?: codes[it]?.version?.let{ _ -> // Otherwise, I create a new code
+                    // If the code does not exist and has a version, I create a new code
+                    CodeBatches(acc.createBatch + makeCodeFromUpdate(codes[it]!!, codeType), acc.updateBatch)
+                    // If the code does not exist and does not have a version, we have a problem
+                } ?: acc
+            }
+
+            if(!isActive) throw CancellationException("Operation was cancelled by the user")
+
+            val createdIds = codeApi.createCodes(newCodes.createBatch).map { it.id }
+
+            val updatedIds = codeApi.modifyCodes(newCodes.updateBatch).map { it.id }
+
+            generatedIds + updatedIds + createdIds
         }
-
-        val createdIds = codeApi.createCodes(newCodes.createBatch).map { it.id }
-
-        val updatedIds = codeApi.modifyCodes(newCodes.updateBatch).map { it.id }
-
-        generatedIds + updatedIds + createdIds
+        cache.getProcess(processId)?.let {
+            cache.updateProcess(
+                processId,
+                it.copy(
+                    status = ProcessStatus.COMPLETED,
+                    eta = System.currentTimeMillis(),
+                    message = "Process completed successfully"
+                )
+            )
+        }
     }

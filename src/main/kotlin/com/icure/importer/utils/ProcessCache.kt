@@ -2,10 +2,11 @@ package com.icure.importer.utils
 
 import com.github.benmanes.caffeine.cache.Cache
 import com.github.benmanes.caffeine.cache.Caffeine
+import kotlinx.coroutines.Job
 import org.springframework.stereotype.Component
 import java.util.concurrent.TimeUnit
 
-enum class ProcessStatus{ QUEUED, PARSING, UPLOADING, COMPLETED, STOPPED }
+enum class ProcessStatus{ QUEUED, PARSING, UPLOADING, WAITING_FOR_TERMINATION, COMPLETED, STOPPED }
 
 data class Process(
     val id: String,
@@ -15,7 +16,8 @@ data class Process(
     val uploaded: Int? = null,
     val total: Int? = null,
     val eta: Long? = null,
-    val stacktrace: String? = null
+    val stacktrace: String? = null,
+    val message: String? = null
 ) {
 
     fun updateETA(total: Int, processed: Int) =
@@ -36,7 +38,6 @@ class ProcessCache {
         .build()
 
     fun getProcess(id: String) = processCache.getIfPresent(id)
-
     fun updateProcess(id: String, process: Process) = processCache.put(id, process)
 
 }

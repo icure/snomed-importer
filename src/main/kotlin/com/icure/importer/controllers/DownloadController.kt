@@ -1,5 +1,7 @@
 package com.icure.importer.controllers
 
+import com.github.benmanes.caffeine.cache.Cache
+import com.github.benmanes.caffeine.cache.Caffeine
 import com.icure.importer.loinc.LoincDownloadLogic
 import com.icure.importer.snomed.SnomedDownloadLogic
 import com.icure.importer.utils.Process
@@ -7,12 +9,10 @@ import com.icure.importer.utils.ProcessCache
 import com.icure.importer.utils.ProcessStatus
 import com.icure.importer.utils.basicAuth
 import io.icure.kraken.client.apis.UserApi
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers.Default
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.coroutines.reactor.mono
 import org.springframework.http.HttpStatus
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import java.lang.IllegalArgumentException
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 data class CodificationParameters (
     val user: String,
@@ -40,7 +41,9 @@ class DownloadController(
     val cache: ProcessCache
 ) {
 
-    private val defaultScope = CoroutineScope(Default)
+    private val jobCache: Cache<String, Job> = Caffeine.newBuilder()
+        .expireAfterWrite(1, TimeUnit.DAYS)
+        .build()
 
     @PostMapping("/loinc")
     fun importLoincCodes(@RequestBody parameters: CodificationParameters) = mono {
@@ -48,46 +51,24 @@ class DownloadController(
             .getCurrentUser()
         if(user.login != parameters.iCureUser) throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         val processId = UUID.randomUUID().toString()
-        defaultScope.launch {
-            cache.updateProcess(
+        cache.updateProcess(
+            processId,
+            Process(
                 processId,
-                Process(
-                    processId,
-                    ProcessStatus.QUEUED,
-                    System.currentTimeMillis()
-                )
+                ProcessStatus.QUEUED,
+                System.currentTimeMillis(),
+                message = "Waiting to start the process"
             )
-            try {
-                loincDownloadLogic.updateLoincCodes(
-                    processId,
-                    parameters.user,
-                    parameters.pwd,
-                    parameters.iCureUrl,
-                    parameters.iCureUser,
-                    parameters.iCurePwd
-                )
-                cache.getProcess(processId)?.let {
-                    cache.updateProcess(
-                        processId,
-                        it.copy(
-                            status = ProcessStatus.COMPLETED,
-                            eta = System.currentTimeMillis()
-                        )
-                    )
-                }
-            } catch(e: Exception) {
-                cache.getProcess(processId)?.let {
-                    cache.updateProcess(
-                        processId,
-                        it.copy(
-                            status = ProcessStatus.STOPPED,
-                            eta = null,
-                            stacktrace = e.stackTraceToString()
-                        )
-                    )
-                }
-            }
-        }
+        )
+        val job = loincDownloadLogic.updateLoincCodes(
+            processId,
+            parameters.user,
+            parameters.pwd,
+            parameters.iCureUrl,
+            parameters.iCureUser,
+            parameters.iCurePwd
+        )
+        jobCache.put(processId, job)
         processId
     }
 
@@ -108,17 +89,7 @@ class DownloadController(
             else -> throw IllegalArgumentException("region should be either int or be")
         }
         val processId = UUID.randomUUID().toString()
-        defaultScope.launch {
-            cache.updateProcess(
-                processId,
-                Process(
-                    processId,
-                    ProcessStatus.QUEUED,
-                    System.currentTimeMillis()
-                )
-            )
-            try {
-                snomedDownloadLogic.updateSnomedCodes(
+        val job = snomedDownloadLogic.updateSnomedCodes(
                     processId,
                     regionCode,
                     releaseType,
@@ -128,32 +99,28 @@ class DownloadController(
                     parameters.iCureUser,
                     parameters.iCurePwd
                 )
-                cache.getProcess(processId)?.let {
-                    cache.updateProcess(
-                        processId,
-                        it.copy(
-                            status = ProcessStatus.COMPLETED,
-                            eta = System.currentTimeMillis()
-                        )
-                    )
-                }
-            } catch(e: Exception) {
-                cache.getProcess(processId)?.let {
-                    cache.updateProcess(
-                        processId,
-                        it.copy(
-                            status = ProcessStatus.STOPPED,
-                            eta = null,
-                            stacktrace = e.stackTraceToString()
-                        )
-                    )
-                }
-            }
-        }
+        jobCache.put(processId, job)
         processId
     }
 
-    @GetMapping("/check/{processId}")
+    @GetMapping("/job/{processId}")
     fun getProcessStatus(@PathVariable processId: String) = cache.getProcess(processId) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
+
+    @DeleteMapping("/job/{processId}")
+    fun abortProcess(@PathVariable processId: String) =
+        jobCache.getIfPresent(processId)?.let {
+            cache.getProcess(processId)?.let { process ->
+                cache.updateProcess(
+                    processId,
+                    process.copy(
+                        status = ProcessStatus.WAITING_FOR_TERMINATION,
+                        eta = null,
+                        message = "Process is scheduled for termination"
+                    )
+                )
+            }
+            it.cancel()
+            "ok"
+        } ?: throw ResponseStatusException(HttpStatus.NOT_FOUND)
 
 }
