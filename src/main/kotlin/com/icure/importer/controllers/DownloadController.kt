@@ -29,7 +29,8 @@ data class CodificationParameters (
     val pwd: String,
     val iCureUser: String,
     val iCurePwd: String,
-    val iCureUrl: String
+    val iCureUrl: String,
+    val chunkSize: Int
 )
 
 @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
@@ -66,7 +67,8 @@ class DownloadController(
             parameters.pwd,
             parameters.iCureUrl,
             parameters.iCureUser,
-            parameters.iCurePwd
+            parameters.iCurePwd,
+            parameters.chunkSize
         )
         jobCache.put(processId, job)
         processId
@@ -90,15 +92,16 @@ class DownloadController(
         }
         val processId = UUID.randomUUID().toString()
         val job = snomedDownloadLogic.updateSnomedCodes(
-                    processId,
-                    regionCode,
-                    releaseType,
-                    parameters.user,
-                    parameters.pwd,
-                    parameters.iCureUrl,
-                    parameters.iCureUser,
-                    parameters.iCurePwd
-                )
+            processId,
+            regionCode,
+            releaseType,
+            parameters.user,
+            parameters.pwd,
+            parameters.iCureUrl,
+            parameters.iCureUser,
+            parameters.iCurePwd,
+            parameters.chunkSize
+        )
         jobCache.put(processId, job)
         processId
     }

@@ -1,5 +1,6 @@
 package com.icure.importer.utils
 
+import com.icure.importer.exceptions.ImportCanceledException
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
 import io.icure.kraken.client.models.filter.chain.FilterChain
@@ -130,7 +131,7 @@ suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chun
                 message = "Uploading codes to iCure backend"
             ))
         }
-        codes.keys.chunked(chunkSize).fold(listOf<String>()) { generatedIds, chunkCodesId ->
+        val uploaded = codes.keys.chunked(chunkSize).fold(listOf<String>()) { generatedIds, chunkCodesId ->
 
             cache.getProcess(processId)?.let {
                 cache.updateProcess(processId, it.updateETA(codes.size, generatedIds.size))
@@ -170,7 +171,7 @@ suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chun
                 } ?: acc
             }
 
-            if(!isActive) throw CancellationException("Operation was cancelled by the user")
+            if(!isActive) throw ImportCanceledException()
 
             val createdIds = codeApi.createCodes(newCodes.createBatch).map { it.id }
 
@@ -184,8 +185,23 @@ suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chun
                 it.copy(
                     status = ProcessStatus.COMPLETED,
                     eta = System.currentTimeMillis(),
+                    uploaded = uploaded.size,
                     message = "Process completed successfully"
                 )
             )
         }
     }
+
+fun setStatusErrorHandler(processId: String, processCache: ProcessCache) = CoroutineExceptionHandler { _, e ->
+    processCache.getProcess(processId)?.let {
+        processCache.updateProcess(
+            processId,
+            it.copy(
+                status = ProcessStatus.STOPPED,
+                eta = null,
+                stacktrace = e.stackTraceToString(),
+                message = e.message ?: "Process interrupted due to an error"
+            )
+        )
+    }
+}
