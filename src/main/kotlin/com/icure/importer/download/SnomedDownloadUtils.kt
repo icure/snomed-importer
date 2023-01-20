@@ -1,4 +1,4 @@
-package com.icure.snomed.importer.download
+package com.icure.importer.download
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper

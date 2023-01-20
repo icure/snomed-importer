@@ -1,4 +1,4 @@
-package com.icure.snomed.importer.download
+package com.icure.importer.download
 
 import java.io.File
 import java.math.BigInteger

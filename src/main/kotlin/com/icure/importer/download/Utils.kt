@@ -1,4 +1,4 @@
-package com.icure.snomed.importer.download
+package com.icure.importer.download
 
 import java.net.http.HttpRequest
 import java.nio.charset.StandardCharsets

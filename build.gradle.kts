@@ -37,6 +37,7 @@ repositories {
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter")
+    implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
@@ -71,11 +72,11 @@ dependencies {
     implementation("edu.stanford.nlp:stanford-corenlp:4.4.0")
     implementation("edu.stanford.nlp:stanford-corenlp:4.4.0:models")
     implementation("edu.stanford.nlp:stanford-corenlp:4.4.0:models-french")
+    implementation(group = "com.github.ben-manes.caffeine", name = "caffeine", version = "2.9.1")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation(group = "io.kotest", name = "kotest-assertions-core", version = "4.6.4")
     testImplementation(group = "io.kotest", name = "kotest-runner-junit5", version = "4.6.4")
-
 }
 
 tasks.withType<KotlinCompile> {

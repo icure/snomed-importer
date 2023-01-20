@@ -1,19 +1,23 @@
-package com.icure.snomed.importer
+package com.icure.importer
 
-import com.icure.snomed.importer.loinc.updateLoincCodes
-import com.icure.snomed.importer.snomed.updateSnomedCodes
+
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
-import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.runApplication
+import org.springframework.context.annotation.PropertySource
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = [
+    "com.icure.importer.controllers",
+    "com.icure.importer.loinc",
+    "com.icure.importer.utils"
+])
+@PropertySource("classpath:application.properties")
 @ExperimentalCoroutinesApi
 @ExperimentalStdlibApi
-class ImporterApplication : CommandLineRunner {
+class ImporterApplication {
 
-    override fun run(args: Array<String>) {
+    fun boh(args: Array<String>) {
         val basePath = System.getenv("BASE_PATH")
         val iCureUsername = System.getenv("ICURE_USER")
         val iCurePassword = System.getenv("ICURE_PWD")
@@ -38,15 +42,15 @@ class ImporterApplication : CommandLineRunner {
 //                iCureUrl,
 //                chunkSize
 //            )
-            updateLoincCodes(
-                basePath,
-                loincUsername,
-                loincPassword,
-                iCureUrl,
-                iCureUsername,
-                iCurePassword,
-                chunkSize
-            )
+//            updateLoincCodes(
+//                basePath,
+//                loincUsername,
+//                loincPassword,
+//                iCureUrl,
+//                iCureUsername,
+//                iCurePassword,
+//                chunkSize
+//            )
         }
     }
 

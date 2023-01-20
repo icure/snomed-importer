@@ -1,4 +1,4 @@
-package com.icure.snomed.importer.nlp
+package com.icure.importer.nlp
 
 import edu.stanford.nlp.io.IOUtils
 import edu.stanford.nlp.pipeline.StanfordCoreNLP

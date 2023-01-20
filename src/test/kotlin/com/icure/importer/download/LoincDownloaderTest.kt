@@ -1,4 +1,4 @@
-package com.icure.snomed.importer.download
+package com.icure.importer.download
 
 import io.kotest.core.spec.style.StringSpec
 import java.io.File

@@ -1,9 +1,9 @@
-package com.icure.snomed.importer.snomed
+package com.icure.importer.snomed
 
-import com.icure.snomed.importer.download.SnomedReleaseDownloader
-import com.icure.snomed.importer.utils.CommandlineProgressBar
-import com.icure.snomed.importer.utils.basicAuth
-import com.icure.snomed.importer.utils.batchDBUpdate
+import com.icure.importer.download.SnomedReleaseDownloader
+import com.icure.importer.utils.CommandlineProgressBar
+import com.icure.importer.utils.basicAuth
+import com.icure.importer.utils.batchDBUpdate
 import io.icure.kraken.client.apis.CodeApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File
@@ -51,12 +51,12 @@ suspend fun updateSnomedCodes(
 
     val codeApi = CodeApi(basePath = iCureUrl, authHeader = basicAuth(userName, password))
 
-    batchDBUpdate(
-        codes,
-        "SNOMED",
-        chunkSize,
-        codeApi,
-        CommandlineProgressBar("Updating codes...", codes.size, 5)
-    )
+//    batchDBUpdate(
+//        codes,
+//        "SNOMED",
+//        chunkSize,
+//        codeApi,
+//        CommandlineProgressBar("Updating codes...", codes.size, 5)
+//    )
     println("")
 }

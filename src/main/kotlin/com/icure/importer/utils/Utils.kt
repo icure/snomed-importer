@@ -1,4 +1,4 @@
-package com.icure.snomed.importer.utils
+package com.icure.importer.utils
 
 import io.icure.kraken.client.apis.CodeApi
 import io.icure.kraken.client.models.CodeDto
@@ -120,10 +120,13 @@ fun makeCodeFromUpdate(update: CodeUpdate, type: String, oldCode: CodeDto? = nul
 }
 
 @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
-suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chunkSize: Int, codeApi: CodeApi, progressBar: CommandlineProgressBar) =
+suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chunkSize: Int, codeApi: CodeApi, cache: ProcessCache, processId: String) =
     codes.keys.chunked(chunkSize).fold(listOf<String>()) { generatedIds, chunkCodesId ->
 
-        progressBar.print()
+        cache.getProcess(processId)?.let {
+            cache.updateProcess(processId, it.updateETA(codes.size, generatedIds.size))
+        }
+
         // First, I look for the existing codes in the database. If multiple CodeDTOs exist for the same code,
         // I only choose the one of the highest version
         val existingCodes = codeApi.filterCodesRecursive(
@@ -155,13 +158,12 @@ suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chun
                 // If the code does not exist and has a version, I create a new code
                 CodeBatches(acc.createBatch + makeCodeFromUpdate(codes[it]!!, codeType), acc.updateBatch)
                 // If the code does not exist and does not have a version, we have a problem
-            } ?: acc.also { progressBar.addSkip() }
+            } ?: acc
         }
 
         val createdIds = codeApi.createCodes(newCodes.createBatch).map { it.id }
 
         val updatedIds = codeApi.modifyCodes(newCodes.updateBatch).map { it.id }
-        progressBar.step(chunkSize)
-        progressBar.print()
+
         generatedIds + updatedIds + createdIds
     }

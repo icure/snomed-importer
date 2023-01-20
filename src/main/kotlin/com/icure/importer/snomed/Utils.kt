@@ -1,8 +1,11 @@
-package com.icure.snomed.importer.snomed
+package com.icure.importer.snomed
 
-import com.icure.snomed.importer.nlp.SentenceParser
-import com.icure.snomed.importer.nlp.createSentenceParser
-import com.icure.snomed.importer.utils.*
+import com.icure.importer.nlp.SentenceParser
+import com.icure.importer.nlp.createSentenceParser
+import com.icure.importer.utils.CodeUpdate
+import com.icure.importer.utils.CommandlineProgressBar
+import com.icure.importer.utils.sanitize
+import com.icure.importer.utils.*
 import java.io.File
 
 // Adds the codes from a delta release
