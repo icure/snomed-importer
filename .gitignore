@@ -40,3 +40,4 @@ out/
 src/main/resources/*
 src/test/resources/*
 **/.DS_Store
+resources/*
