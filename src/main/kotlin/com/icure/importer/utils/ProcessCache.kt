@@ -6,12 +6,13 @@ import kotlinx.coroutines.Job
 import org.springframework.stereotype.Component
 import java.util.concurrent.TimeUnit
 
-enum class ProcessStatus{ QUEUED, PARSING, UPLOADING, WAITING_FOR_TERMINATION, COMPLETED, STOPPED }
+enum class ProcessStatus{ QUEUED, DOWNLOADING, PARSING, UPLOADING, WAITING_FOR_TERMINATION, COMPLETED, STOPPED }
 
 data class Process(
     val id: String,
     val status: ProcessStatus,
-    val started: Long,
+    val queued: Long,
+    val started: Long? = null,
     val uploadStarted: Long? = null,
     val uploaded: Int? = null,
     val total: Int? = null,
@@ -27,6 +28,8 @@ data class Process(
                 uploaded = processed
             )
         else this
+
+    fun isCanceled() = status == ProcessStatus.COMPLETED || status == ProcessStatus.STOPPED || status == ProcessStatus.WAITING_FOR_TERMINATION
 
 }
 

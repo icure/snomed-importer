@@ -171,7 +171,7 @@ suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chun
                 } ?: acc
             }
 
-            if(!isActive) throw ImportCanceledException()
+            if(cache.getProcess(processId)?.isCanceled() != false) throw ImportCanceledException()
 
             val createdIds = codeApi.createCodes(newCodes.createBatch).map { it.id }
 
@@ -191,17 +191,3 @@ suspend fun batchDBUpdate(codes: Map<String, CodeUpdate>, codeType: String, chun
             )
         }
     }
-
-fun setStatusErrorHandler(processId: String, processCache: ProcessCache) = CoroutineExceptionHandler { _, e ->
-    processCache.getProcess(processId)?.let {
-        processCache.updateProcess(
-            processId,
-            it.copy(
-                status = ProcessStatus.STOPPED,
-                eta = null,
-                stacktrace = e.stackTraceToString(),
-                message = e.message ?: "Process interrupted due to an error"
-            )
-        )
-    }
-}

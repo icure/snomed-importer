@@ -2,60 +2,69 @@ package com.icure.importer.loinc
 
 import com.icure.importer.download.LoincReleaseDownloader
 import com.icure.importer.exceptions.ImportCanceledException
+import com.icure.importer.scheduler.DownloadTask
 import com.icure.importer.utils.*
 import io.icure.kraken.client.apis.CodeApi
-import kotlinx.coroutines.*
-import org.springframework.beans.factory.annotation.Value
-import org.springframework.stereotype.Component
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.withContext
 import java.io.File
-import java.lang.Exception
 
-@Component
-class LoincDownloadLogic(
-    val processCache: ProcessCache,
-    val parser: MultiLanguageParser,
-    @Value("\${importer.base-folder}") private val basePath: String,
-) {
+class LoincDownloadTask(
+    private val downloader: LoincReleaseDownloader,
+    private val parser: MultiLanguageParser,
+    private val processCache: ProcessCache,
+    override val processId: String,
+    private val loincUsername: String,
+    private val loincPassword: String,
+    private val iCureUrl: String,
+    private val iCureUsername: String,
+    private val iCurePassword: String,
+    private val chunkSize: Int,
+    private val basePath: String
+) : DownloadTask {
 
-    private val downloader = LoincReleaseDownloader("$basePath/loinc")
-    private val defaultScope = CoroutineScope(Dispatchers.Default)
-
-    private fun getLoincFQN(fields: List<String>, columns: Map<String, Int>) =
-        "${fields[columns["COMPONENT"]!!]}:" +
-                "${fields[columns["PROPERTY"]!!]}:" +
-                "${fields[columns["TIME_ASPCT"]!!]}:" +
-                "${fields[columns["SYSTEM"]!!]}:" +
-                fields[columns["SCALE_TYP"]!!] +
-                ((":" + fields[columns["METHOD_TYP"]!!]).takeIf { it != ":" } ?: "")
+    init {
+        processCache.updateProcess(
+            processId,
+            Process(
+                processId,
+                ProcessStatus.QUEUED,
+                System.currentTimeMillis(),
+                message = "Waiting to start the process"
+            )
+        )
+    }
 
     @OptIn(ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class)
-    suspend fun updateLoincCodes(
-        processId: String,
-        loincUsername: String,
-        loincPassword: String,
-        iCureUrl: String,
-        iCureUsername: String,
-        iCurePassword: String,
-        chunkSize: Int
-    ) = defaultScope.launch(setStatusErrorHandler(processId, processCache)) {
+    override suspend fun execute(): Unit = withContext(Dispatchers.Default) {
         processCache.getProcess(processId)?.let {
             processCache.updateProcess(
                 processId, it.copy(
                     started = System.currentTimeMillis(),
-                    status = ProcessStatus.PARSING,
-                    message = "Downloading and parsing codification files"
+                    status = ProcessStatus.DOWNLOADING,
+                    message = "Downloading codification files"
                 )
             )
         }
 
         downloader.downloadRelease(loincUsername, loincPassword)
 
+        processCache.getProcess(processId)?.let {
+            processCache.updateProcess(
+                processId, it.copy(
+                    status = ProcessStatus.PARSING,
+                    message = "Parsing codification files"
+                )
+            )
+        }
+
         val newCodes = sortedMapOf<String, CodeUpdate>(compareBy { it.lowercase() })
 
         val tableColumns = File("$basePath/loinc/LoincTable/Loinc.csv").fieldColumnAssociation()
 
         File("$basePath/loinc/LoincTable/Loinc.csv").forEachLine { line ->
-            if(!isActive) throw ImportCanceledException()
+            if(processCache.getProcess(processId)?.isCanceled() != false) throw ImportCanceledException()
             val fields = line.removeSurrounding("\"").split("\",\"")
             if (fields[0] != "LOINC_NUM") {
                 val names = listOf(
@@ -85,7 +94,7 @@ class LoincDownloadLogic(
 
             val localColumns = localVariantFile.fieldColumnAssociation()
             localVariantFile.forEachLine { line ->
-                if(!isActive) throw ImportCanceledException()
+                if(processCache.getProcess(processId)?.isCanceled() != false) throw ImportCanceledException()
                 val fields = line.removeSurrounding("\"").split("\",\"")
                 if (fields[0] != "LOINC_NUM") {
                     val names = listOf(
