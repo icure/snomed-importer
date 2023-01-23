@@ -47,8 +47,12 @@ class DownloadController(
 
     @PostMapping("/loinc")
     fun importLoincCodes(@RequestBody parameters: CodificationParameters) = mono {
-        val user = UserApi(basePath = parameters.iCureUrl, authHeader = basicAuth(parameters.iCureUser, parameters.iCurePwd))
-            .getCurrentUser()
+        val user = try {
+            UserApi(basePath = parameters.iCureUrl, authHeader = basicAuth(parameters.iCureUser, parameters.iCurePwd))
+                .getCurrentUser()
+        } catch (e: Exception) {
+            throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        }
         if(user.login != parameters.iCureUser) throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         val processId = UUID.randomUUID().toString()
         val task = loincDownloadLogic.generateTask(
@@ -71,8 +75,12 @@ class DownloadController(
         @PathVariable region: String,
         @RequestBody parameters: CodificationParameters
     ) = mono {
-        val user = UserApi(basePath = parameters.iCureUrl, authHeader = basicAuth(parameters.iCureUser, parameters.iCurePwd))
-            .getCurrentUser()
+        val user = try {
+            UserApi(basePath = parameters.iCureUrl, authHeader = basicAuth(parameters.iCureUser, parameters.iCurePwd))
+                .getCurrentUser()
+        } catch (e: Exception) {
+            throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
+        }
         if(user.login != parameters.iCureUser) throw ResponseStatusException(HttpStatus.UNAUTHORIZED)
         if(!listOf("delta", "snapshot").contains(releaseType)) throw IllegalArgumentException("releaseType should be either delta or snapshot")
         val regionCode = when(region) {
