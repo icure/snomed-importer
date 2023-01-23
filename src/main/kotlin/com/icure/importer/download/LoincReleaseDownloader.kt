@@ -48,7 +48,7 @@ class LoincReleaseDownloader(
                 .build()
 
             client.send(request, HttpResponse.BodyHandlers.ofFile(Paths.get("$baseFolder/$downloadedFileName")))
-            val process = ProcessBuilder("unzip", downloadedFileName)
+            val process = ProcessBuilder("unzip", "-n", downloadedFileName)
             process.directory(File(baseFolder))
             process.start().waitFor()
         }

@@ -1,6 +1,5 @@
 package com.icure.importer.download
 
-import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.SingletonSupport
@@ -11,11 +10,9 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
-import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import java.security.MessageDigest
 import java.util.*
-import kotlin.collections.ArrayList
 
 data class ReleaseFolders (
     val delta: String?,
@@ -118,15 +115,17 @@ class SnomedReleaseDownloader(
     }
 
     fun downloadRelease(username: String, password: String, release: ReleaseFile) {
-        val sessionCookie = getSessionCookie(username, password)
-        sessionCookie?.let { cookie ->
-            val request = HttpRequest.newBuilder()
-                .uri(URI.create("https://mlds.ihtsdotools.org${release.clientDownloadUrl}"))
-                .header("Cookie", cookie)
-                .GET()
-                .build()
+        if (!File("$baseFolder/${release.label}").exists()) {
+            val sessionCookie = getSessionCookie(username, password)
+            sessionCookie?.let { cookie ->
+                val request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://mlds.ihtsdotools.org${release.clientDownloadUrl}"))
+                    .header("Cookie", cookie)
+                    .GET()
+                    .build()
 
-            client.send(request, HttpResponse.BodyHandlers.ofFile(Paths.get("$baseFolder/${release.label}")))
+                client.send(request, HttpResponse.BodyHandlers.ofFile(Paths.get("$baseFolder/${release.label}")))
+            }
         }
     }
 
@@ -147,7 +146,7 @@ class SnomedReleaseDownloader(
     }
 
     fun getReleaseTypes(release: ReleaseFile): ReleaseFolders {
-        val process = ProcessBuilder("unzip", release.label)
+        val process = ProcessBuilder("unzip", "-n", release.label)
         process.directory(File(baseFolder))
         process.start().waitFor()
         val deltaDir = if (File("$baseFolder/${release.label.split('.')[0]}/Delta").isDirectory)
